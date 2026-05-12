@@ -81,13 +81,13 @@ with tab2:
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        S2 = st.number_input("Current Price (標的價)", value=343.25, step=1.0, key="s_iv")
-        days2 = st.number_input("Days to Expiry (天數)", value=3.0, step=1.0, key="d_iv")
+        S2 = st.number_input("Current Price (標的價)", value=404.0, step=1.0, key="s_iv")
+        days2 = st.number_input("Days to Expiry (天數)", value=11.0, step=1.0, key="d_iv")
     with col2:
-        K2 = st.number_input("Strike Price (履約價)", value=320.0, step=1.0, key="k_iv")
-        r2 = st.number_input("Risk-free Rate % (利率)", value=3.7, step=0.1, key="r_iv")
+        K2 = st.number_input("Strike Price (履約價)", value=360.0, step=1.0, key="k_iv")
+        r2 = st.number_input("Risk-free Rate % (利率)", value=3.65, step=0.1, key="r_iv")
     with col3:
-        target_price = st.number_input("Market Premium (Bid/Ask MID 權利金)", value=0.70, step=0.1, key="target_iv")
+        target_price = st.number_input("Market Premium (Bid/Ask MID 權利金)", value=1.62, step=0.1, key="target_iv")
         opt_type = st.selectbox("Option Type (類型)", ["put", "call"], key="type_iv")
 
     if st.button("Calculate Implied Volatility", type="primary", key="btn_iv"):
