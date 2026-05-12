@@ -59,7 +59,7 @@ with tab1:
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        S = st.number_input("Current Price (標的價)", value=390, step=1.0, key="s_p")
+        S = st.number_input("Current Price (標的價)", value=390.0, step=1.0, key="s_p")
         r1 = st.number_input("Risk-free Rate % (利率)", value=3.65, step=0.1, key="r_p")
     with col2:
         K = st.number_input("Strike Price (履約價)", value=360.0, step=1.0, key="k_p")
