@@ -1,7 +1,35 @@
 import streamlit as st
 import math
 import datetime
+import json
+from pathlib import Path
 from scipy.stats import norm
+
+# --- Persistence: remember TSM/MU presets across page reloads ---
+# st.session_state only lives for one browser connection -- reloading the
+# page starts a brand new session and wipes it. A small JSON file next to
+# app.py survives reloads (it doesn't survive a fresh redeploy, which is
+# fine: this is "don't lose today's numbers on refresh", not a database).
+PRESETS_FILE = Path(__file__).resolve().parent / ".option_calc_presets.json"
+
+def load_presets_from_disk():
+    if not PRESETS_FILE.exists():
+        return None
+    try:
+        return json.loads(PRESETS_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+def save_presets_to_disk(presets, active_ticker_tab1, active_ticker_tab2):
+    data = {
+        "presets": presets,
+        "active_ticker_tab1": active_ticker_tab1,
+        "active_ticker_tab2": active_ticker_tab2,
+    }
+    try:
+        PRESETS_FILE.write_text(json.dumps(data), encoding="utf-8")
+    except OSError:
+        pass
 
 # --- Core Logic: Black-Scholes Pricing ---
 def calculate_black_scholes(S, K, days, r_pct, iv_pct):
@@ -133,13 +161,40 @@ st.markdown(
 )
 
 # Per-tab memory of each ticker's last-used inputs, so switching between
-# TSM/MU doesn't lose what you typed for the other one.
+# TSM/MU doesn't lose what you typed for the other one -- and so reloading
+# the page doesn't lose it either.
 if "presets" not in st.session_state:
-    st.session_state["presets"] = {"tab1": {}, "tab2": {}}
-if "active_ticker_tab1" not in st.session_state:
-    st.session_state["active_ticker_tab1"] = None
-if "active_ticker_tab2" not in st.session_state:
-    st.session_state["active_ticker_tab2"] = None
+    disk_data = load_presets_from_disk()
+    if disk_data:
+        st.session_state["presets"] = disk_data.get("presets", {"tab1": {}, "tab2": {}})
+        st.session_state["active_ticker_tab1"] = disk_data.get("active_ticker_tab1")
+        st.session_state["active_ticker_tab2"] = disk_data.get("active_ticker_tab2")
+    else:
+        st.session_state["presets"] = {"tab1": {}, "tab2": {}}
+        st.session_state["active_ticker_tab1"] = None
+        st.session_state["active_ticker_tab2"] = None
+
+    # This is the first run of a brand new session (e.g. right after a page
+    # reload) -- no widget has been created yet, so it's safe to seed their
+    # session_state values here, same as the ticker-button click handlers do.
+    active1 = st.session_state["active_ticker_tab1"]
+    preset1 = st.session_state["presets"]["tab1"].get(active1) if active1 else None
+    if preset1:
+        st.session_state["s_p"] = preset1["S"]
+        st.session_state["k_p"] = preset1["K"]
+        st.session_state["r_p"] = preset1["r1"]
+        st.session_state["iv_p"] = preset1["iv1"]
+        st.session_state["d_p"] = preset1["days1"]
+
+    active2 = st.session_state["active_ticker_tab2"]
+    preset2 = st.session_state["presets"]["tab2"].get(active2) if active2 else None
+    if preset2:
+        st.session_state["s_iv"] = preset2["S2"]
+        st.session_state["k_iv"] = preset2["K2"]
+        st.session_state["r_iv"] = preset2["r2"]
+        st.session_state["target_iv"] = preset2["target_price"]
+        st.session_state["d_iv"] = preset2["days2"]
+        st.session_state["type_iv"] = preset2["opt_type"]
 
 TICKERS = ["TSM", "MU"]
 # Fallback shown the first time a ticker is selected and has no saved preset
@@ -202,11 +257,17 @@ with tab1:
             st.session_state["_apply_next_friday_p"] = True
             st.rerun()
 
-    # Remember this ticker's latest inputs for next time it's selected.
+    # Remember this ticker's latest inputs for next time it's selected --
+    # in session_state (same-session tab switches) and on disk (page reloads).
     if active_tab1:
         st.session_state["presets"]["tab1"][active_tab1] = {
             "S": S, "K": K, "r1": r1, "iv1": iv1, "days1": days1,
         }
+        save_presets_to_disk(
+            st.session_state["presets"],
+            st.session_state["active_ticker_tab1"],
+            st.session_state["active_ticker_tab2"],
+        )
 
     if st.button("Calculate Premium", type="primary", key="btn_p"):
         call, put = calculate_black_scholes(S, K, days1, r1, iv1)
@@ -262,12 +323,18 @@ with tab2:
         target_price = st.number_input("Market Premium (Bid/Ask MID 權利金)", value=1.98, step=0.1, key="target_iv")
         opt_type = st.selectbox("Option Type (類型)", ["put", "call"], key="type_iv")
 
-    # Remember this ticker's latest inputs for next time it's selected.
+    # Remember this ticker's latest inputs for next time it's selected --
+    # in session_state (same-session tab switches) and on disk (page reloads).
     if active_tab2:
         st.session_state["presets"]["tab2"][active_tab2] = {
             "S2": S2, "K2": K2, "r2": r2, "target_price": target_price,
             "days2": days2, "opt_type": opt_type,
         }
+        save_presets_to_disk(
+            st.session_state["presets"],
+            st.session_state["active_ticker_tab1"],
+            st.session_state["active_ticker_tab2"],
+        )
 
     if st.button("Calculate Implied Volatility", type="primary", key="btn_iv"):
         iv_result = calculate_iv(S2, K2, target_price, days2, r2, opt_type)
