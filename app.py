@@ -92,9 +92,9 @@ with tab1:
         c1, c2 = st.columns(2)
         c1.metric(label="📈 Call Price (買權)", value=f"${call:.4f}")
         c2.metric(label="📉 Put Price (賣權)", value=f"${put:.4f}")
-        d1, d2 = st.columns(2)
-        d1.metric(label="Call Δ (Delta)", value=f"{call_delta:.4f}")
-        d2.metric(label="Put Δ (Delta)", value=f"{put_delta:.4f}")
+        c3, c4 = st.columns(2)
+        c3.metric(label="Call Δ (Delta)", value=f"{call_delta:.4f}")
+        c4.metric(label="Put Δ (Delta)", value=f"{put_delta:.4f}")
 
 # --- TAB 2: IV CALCULATION ---
 with tab2:
@@ -118,7 +118,7 @@ with tab2:
             st.success("Calculation Complete!")
             delta_result = calculate_delta(S2, K2, days2, r2, iv_result, opt_type)
             e1, e2 = st.columns(2)
-            e1.metric(label=f"📊 Implied Volatility (IV)", value=f"{iv_result:.2f} %")
+            e1.metric(label="📊 Implied Volatility (IV)", value=f"{iv_result:.2f} %")
             e2.metric(label="Δ (Delta)", value=f"{delta_result:.4f}")
         else:
             st.error("Could not converge. Please check if the premium is lower than the intrinsic value.")
