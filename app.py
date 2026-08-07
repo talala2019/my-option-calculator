@@ -72,6 +72,14 @@ def days_until_next_friday(today=None):
         days_ahead = 7
     return days_ahead
 
+def next_friday_label(today=None):
+    """Next Friday's date formatted like '2026 AUG 14', for display on the
+    quick-fill button."""
+    if today is None:
+        today = datetime.date.today()
+    target = today + datetime.timedelta(days=days_until_next_friday(today))
+    return target.strftime("%Y %b %d").upper()
+
 # --- UI Helper: colored Call/Put result panel ---
 def render_result_panel(container, header, metric_label, metric_value, delta_value, color):
     """Render a colored card showing one option side's result + Delta.
@@ -96,8 +104,6 @@ def render_result_panel(container, header, metric_label, metric_value, delta_val
 st.set_page_config(page_title="Options Pricing & IV Calculator", layout="centered")
 
 st.title("📈 Options Pricing & IV Calculator")
-st.markdown("Calculate Black-Scholes theoretical prices or reverse-engineer Implied Volatility (IV).")
-st.markdown("This tool uses the Black-Scholes model and Newton-Raphson iteration for IV calculation.")
 
 # Per-tab memory of each ticker's last-used inputs, so switching between
 # TSM/MU doesn't lose what you typed for the other one.
@@ -160,7 +166,7 @@ with tab1:
         iv1 = st.number_input("Implied Volatility % (IV 隱含波動率)", value=45.0, step=1.0, key="iv_p")
     with col3:
         days1 = st.number_input("Days to Expiry (天數)", value=8.0, step=1.0, key="d_p")
-        if st.button("📅 算至下週五", key="next_friday_p"):
+        if st.button(f"📅 算至下週五 ({next_friday_label()})", key="next_friday_p"):
             st.session_state["_apply_next_friday_p"] = True
             st.rerun()
 
@@ -209,7 +215,7 @@ with tab2:
     with col1:
         S2 = st.number_input("Current Price (標的價)", value=418.0, step=1.0, key="s_iv")
         days2 = st.number_input("Days to Expiry (天數)", value=8.0, step=1.0, key="d_iv")
-        if st.button("📅 算至下週五", key="next_friday_iv"):
+        if st.button(f"📅 算至下週五 ({next_friday_label()})", key="next_friday_iv"):
             st.session_state["_apply_next_friday_iv"] = True
             st.rerun()
     with col2:
