@@ -127,6 +127,8 @@ def render_pricing_section(ticker):
     def k(name):
         return f"{name}_{ticker}"
 
+    d = TICKER_DEFAULTS[ticker]
+
     if st.session_state.pop(f"_apply_this_friday_p_{ticker}", False):
         st.session_state[k("d_p")] = float(days_until_this_friday())
     if st.session_state.pop(f"_apply_next_friday_p_{ticker}", False):
@@ -134,13 +136,13 @@ def render_pricing_section(ticker):
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        S = st.number_input("Current Price (標的價)", value=418.0, step=1.0, key=k("s_p"))
-        r1 = st.number_input("Risk-free Rate % (利率)", value=3.8, step=0.1, key=k("r_p"))
+        S = st.number_input("Current Price (標的價)", value=d["S"], step=1.0, key=k("s_p"))
+        r1 = st.number_input("Risk-free Rate % (利率)", value=d["r"], step=0.1, key=k("r_p"))
     with col2:
-        K = st.number_input("Strike Price (履約價)", value=390.0, step=1.0, key=k("k_p"))
-        iv1 = st.number_input("Implied Volatility % (IV 隱含波動率)", value=45.0, step=1.0, key=k("iv_p"))
+        K = st.number_input("Strike Price (履約價)", value=d["K"], step=1.0, key=k("k_p"))
+        iv1 = st.number_input("Implied Volatility % (IV 隱含波動率)", value=d["iv"], step=1.0, key=k("iv_p"))
     with col3:
-        days1 = st.number_input("Days to Expiry (天數)", value=8.0, step=1.0, key=k("d_p"))
+        days1 = st.number_input("Days to Expiry (天數)", value=d["days"], step=1.0, key=k("d_p"))
         if st.button(f"📅 算至本週五 ({this_friday_label()})", key=k("this_friday_p")):
             st.session_state[f"_apply_this_friday_p_{ticker}"] = True
             st.rerun()
@@ -163,6 +165,8 @@ def render_iv_section(ticker):
     def k(name):
         return f"{name}_{ticker}"
 
+    d = TICKER_DEFAULTS[ticker]
+
     if st.session_state.pop(f"_apply_this_friday_iv_{ticker}", False):
         st.session_state[k("d_iv")] = float(days_until_this_friday())
     if st.session_state.pop(f"_apply_next_friday_iv_{ticker}", False):
@@ -170,8 +174,8 @@ def render_iv_section(ticker):
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        S2 = st.number_input("Current Price (標的價)", value=418.0, step=1.0, key=k("s_iv"))
-        days2 = st.number_input("Days to Expiry (天數)", value=8.0, step=1.0, key=k("d_iv"))
+        S2 = st.number_input("Current Price (標的價)", value=d["S"], step=1.0, key=k("s_iv"))
+        days2 = st.number_input("Days to Expiry (天數)", value=d["days"], step=1.0, key=k("d_iv"))
         if st.button(f"📅 算至本週五 ({this_friday_label()})", key=k("this_friday_iv")):
             st.session_state[f"_apply_this_friday_iv_{ticker}"] = True
             st.rerun()
@@ -179,10 +183,10 @@ def render_iv_section(ticker):
             st.session_state[f"_apply_next_friday_iv_{ticker}"] = True
             st.rerun()
     with col2:
-        K2 = st.number_input("Strike Price (履約價)", value=390.0, step=1.0, key=k("k_iv"))
-        r2 = st.number_input("Risk-free Rate % (利率)", value=3.8, step=0.1, key=k("r_iv"))
+        K2 = st.number_input("Strike Price (履約價)", value=d["K"], step=1.0, key=k("k_iv"))
+        r2 = st.number_input("Risk-free Rate % (利率)", value=d["r"], step=0.1, key=k("r_iv"))
     with col3:
-        target_price = st.number_input("Market Premium (Bid/Ask MID 權利金)", value=1.98, step=0.1, key=k("target_iv"))
+        target_price = st.number_input("Market Premium (Bid/Ask MID 權利金)", value=d["premium"], step=0.1, key=k("target_iv"))
         opt_type = st.selectbox("Option Type (類型)", ["put", "call"], key=k("type_iv"))
 
     if st.button("Calculate Implied Volatility", type="primary", key=k("btn_iv")):
@@ -222,6 +226,13 @@ st.markdown(
 )
 
 TICKERS = ["TSM", "MU"]
+# Starting numbers shown before you've typed anything -- just a sane
+# ballpark per ticker's actual price scale (TSM ~$418, MU ~$881 as of
+# Aug 2026), not live data. Edit freely; these aren't fetched or refreshed.
+TICKER_DEFAULTS = {
+    "TSM": {"S": 418.0, "K": 390.0, "r": 3.8, "iv": 45.0, "days": 8.0, "premium": 1.98},
+    "MU": {"S": 881.0, "K": 850.0, "r": 3.8, "iv": 60.0, "days": 8.0, "premium": 4.5},
+}
 
 # Create Tabs for the two main functions
 tab1, tab2 = st.tabs(["💰 Pricing (權利金計算)", "📊 Implied Volatility (IV 隱含波動率 反推)"])
