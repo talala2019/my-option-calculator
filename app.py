@@ -231,7 +231,7 @@ TICKERS = ["TSM", "MU"]
 # Aug 2026), not live data. Edit freely; these aren't fetched or refreshed.
 TICKER_DEFAULTS = {
     "TSM": {"S": 418.0, "K": 390.0, "r": 3.8, "iv": 45.0, "days": 8.0, "premium": 1.98},
-    "MU": {"S": 881.0, "K": 850.0, "r": 3.8, "iv": 60.0, "days": 8.0, "premium": 4.5},
+    "MU": {"S": 880.0, "K": 750.0, "r": 3.8, "iv": 78.0, "days": 8.0, "premium": 4.5},
 }
 
 # Create Tabs for the two main functions
