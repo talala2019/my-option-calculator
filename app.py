@@ -194,19 +194,27 @@ def render_pricing_section(ticker):
             "S": "股價", "K": "履約價", "r": "利率%", "IV": "IV%", "days": "天數",
             "Call": "Call 價", "Put": "Put 價", "CallΔ": "Call Δ", "PutΔ": "Put Δ",
         })
+        # Tint the Call columns red and the Put columns green (same TW-market
+        # convention as the result panels above), with dark text forced so
+        # it stays readable over the light background in both themes.
+        styled_hist = hist_df.style.set_properties(
+            subset=["Call 價", "Call Δ"], **{"background-color": "#fdecea", "color": "#222"}
+        ).set_properties(
+            subset=["Put 價", "Put Δ"], **{"background-color": "#e6f4ea", "color": "#222"}
+        )
         event = st.dataframe(
-            hist_df, on_select="rerun", selection_mode="single-row",
+            styled_hist, on_select="rerun", selection_mode="single-row",
             key=k("history_table"), hide_index=True,
             column_config={
-                "股價": st.column_config.NumberColumn(format="%.1f"),
-                "履約價": st.column_config.NumberColumn(format="%.1f"),
-                "利率%": st.column_config.NumberColumn(format="%.1f"),
-                "IV%": st.column_config.NumberColumn(format="%.1f"),
-                "天數": st.column_config.NumberColumn(format="%.0f"),
-                "Call 價": st.column_config.NumberColumn(format="%.2f"),
-                "Put 價": st.column_config.NumberColumn(format="%.2f"),
-                "Call Δ": st.column_config.NumberColumn(format="%.3f"),
-                "Put Δ": st.column_config.NumberColumn(format="%.3f"),
+                "股價": st.column_config.NumberColumn(format="%.1f", alignment="center"),
+                "履約價": st.column_config.NumberColumn(format="%.1f", alignment="center"),
+                "利率%": st.column_config.NumberColumn(format="%.1f", alignment="center"),
+                "IV%": st.column_config.NumberColumn(format="%.1f", alignment="center"),
+                "天數": st.column_config.NumberColumn(format="%.0f", alignment="center"),
+                "Call 價": st.column_config.NumberColumn(format="%.2f", alignment="center"),
+                "Put 價": st.column_config.NumberColumn(format="%.2f", alignment="center"),
+                "Call Δ": st.column_config.NumberColumn(format="%.3f", alignment="center"),
+                "Put Δ": st.column_config.NumberColumn(format="%.3f", alignment="center"),
             },
         )
         selected_rows = event["selection"]["rows"]
