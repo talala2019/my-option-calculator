@@ -87,7 +87,7 @@ with tab2:
         K2 = st.number_input("Strike Price (履約價)", value=390.0, step=1.0, key="k_iv")
         r2 = st.number_input("Risk-free Rate % (利率)", value=4.0, step=0.1, key="r_iv")
     with col3:
-        target_price = st.number_input("Market Premium (Bid/Ask MID 權利金)", value=1.62, step=0.1, key="target_iv")
+        target_price = st.number_input("Market Premium (Bid/Ask MID 權利金)", value=1.98, step=0.1, key="target_iv")
         opt_type = st.selectbox("Option Type (類型)", ["put", "call"], key="type_iv")
 
     if st.button("Calculate Implied Volatility", type="primary", key="btn_iv"):
