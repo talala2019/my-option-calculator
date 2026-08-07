@@ -59,13 +59,13 @@ with tab1:
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        S = st.number_input("Current Price (標的價)", value=390.0, step=1.0, key="s_p")
-        r1 = st.number_input("Risk-free Rate % (利率)", value=3.65, step=0.1, key="r_p")
+        S = st.number_input("Current Price (標的價)", value=420.0, step=1.0, key="s_p")
+        r1 = st.number_input("Risk-free Rate % (利率)", value=4.0, step=0.1, key="r_p")
     with col2:
-        K = st.number_input("Strike Price (履約價)", value=360.0, step=1.0, key="k_p")
+        K = st.number_input("Strike Price (履約價)", value=390.0, step=1.0, key="k_p")
         iv1 = st.number_input("Implied Volatility % (IV 隱含波動率)", value=52.0, step=1.0, key="iv_p")
     with col3:
-        days1 = st.number_input("Days to Expiry (天數)", value=7.0, step=1.0, key="d_p")
+        days1 = st.number_input("Days to Expiry (天數)", value=8.0, step=1.0, key="d_p")
 
     if st.button("Calculate Premium", type="primary", key="btn_p"):
         call, put = calculate_black_scholes(S, K, days1, r1, iv1)
@@ -81,11 +81,11 @@ with tab2:
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        S2 = st.number_input("Current Price (標的價)", value=404.0, step=1.0, key="s_iv")
-        days2 = st.number_input("Days to Expiry (天數)", value=11.0, step=1.0, key="d_iv")
+        S2 = st.number_input("Current Price (標的價)", value=418.0, step=1.0, key="s_iv")
+        days2 = st.number_input("Days to Expiry (天數)", value=8.0, step=1.0, key="d_iv")
     with col2:
-        K2 = st.number_input("Strike Price (履約價)", value=360.0, step=1.0, key="k_iv")
-        r2 = st.number_input("Risk-free Rate % (利率)", value=3.65, step=0.1, key="r_iv")
+        K2 = st.number_input("Strike Price (履約價)", value=390.0, step=1.0, key="k_iv")
+        r2 = st.number_input("Risk-free Rate % (利率)", value=4.0, step=0.1, key="r_iv")
     with col3:
         target_price = st.number_input("Market Premium (Bid/Ask MID 權利金)", value=1.62, step=0.1, key="target_iv")
         opt_type = st.selectbox("Option Type (類型)", ["put", "call"], key="type_iv")
