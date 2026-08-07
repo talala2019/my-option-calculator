@@ -218,7 +218,12 @@ with tab1:
     # sets are picked up as those widgets' initial values this run.
     ticker_cols = st.columns(len(TICKERS))
     for i, ticker in enumerate(TICKERS):
-        if ticker_cols[i].button(ticker, key=f"ticker_{ticker}_p", use_container_width=True):
+        is_active = ticker == st.session_state["active_ticker_tab1"]
+        clicked = ticker_cols[i].button(
+            ticker, key=f"ticker_{ticker}_p", use_container_width=True,
+            type="primary" if is_active else "secondary",
+        )
+        if clicked:
             st.session_state["active_ticker_tab1"] = ticker
             preset = st.session_state["presets"]["tab1"].get(ticker, DEFAULT_TAB1)
             st.session_state["s_p"] = preset["S"]
@@ -226,6 +231,11 @@ with tab1:
             st.session_state["r_p"] = preset["r1"]
             st.session_state["iv_p"] = preset["iv1"]
             st.session_state["d_p"] = preset["days1"]
+            # Rerun so the buttons above re-render with the new highlight --
+            # without this, the just-clicked button stays unhighlighted until
+            # the next unrelated interaction (see Tab 1's Friday-button
+            # comment below for why the same-run render can't reflect it).
+            st.rerun()
     active_tab1 = st.session_state["active_ticker_tab1"]
     if active_tab1:
         st.caption(f"目前追蹤: **{active_tab1}**（輸入變更會自動記住）")
@@ -274,7 +284,7 @@ with tab1:
         call_delta = calculate_delta(S, K, days1, r1, iv1, 'call')
         put_delta = calculate_delta(S, K, days1, r1, iv1, 'put')
         st.divider()
-        st.success("Calculation Complete!")
+        st.success(f"Calculation Complete! (for {active_tab1})" if active_tab1 else "Calculation Complete!")
         p1, p2 = st.columns(2)
         render_result_panel(p1, "📈 買權 Call", "Price", f"${call:.4f}", call_delta, "red")
         render_result_panel(p2, "📉 賣權 Put", "Price", f"${put:.4f}", put_delta, "green")
@@ -286,7 +296,12 @@ with tab2:
     # Ticker quick-switch (same pattern as Tab 1, own memory).
     ticker_cols2 = st.columns(len(TICKERS))
     for i, ticker in enumerate(TICKERS):
-        if ticker_cols2[i].button(ticker, key=f"ticker_{ticker}_iv", use_container_width=True):
+        is_active2 = ticker == st.session_state["active_ticker_tab2"]
+        clicked2 = ticker_cols2[i].button(
+            ticker, key=f"ticker_{ticker}_iv", use_container_width=True,
+            type="primary" if is_active2 else "secondary",
+        )
+        if clicked2:
             st.session_state["active_ticker_tab2"] = ticker
             preset = st.session_state["presets"]["tab2"].get(ticker, DEFAULT_TAB2)
             st.session_state["s_iv"] = preset["S2"]
@@ -295,6 +310,7 @@ with tab2:
             st.session_state["target_iv"] = preset["target_price"]
             st.session_state["d_iv"] = preset["days2"]
             st.session_state["type_iv"] = preset["opt_type"]
+            st.rerun()  # see Tab 1's comment on why this is needed for the highlight
     active_tab2 = st.session_state["active_ticker_tab2"]
     if active_tab2:
         st.caption(f"目前追蹤: **{active_tab2}**（輸入變更會自動記住）")
@@ -340,7 +356,7 @@ with tab2:
         iv_result = calculate_iv(S2, K2, target_price, days2, r2, opt_type)
         st.divider()
         if iv_result is not None and iv_result > 0:
-            st.success("Calculation Complete!")
+            st.success(f"Calculation Complete! (for {active_tab2})" if active_tab2 else "Calculation Complete!")
             delta_result = calculate_delta(S2, K2, days2, r2, iv_result, opt_type)
             if opt_type == "call":
                 header, color = "📈 買權 Call", "red"
