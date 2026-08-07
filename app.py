@@ -43,6 +43,22 @@ def calculate_iv(S, K, target_price, days, r_pct, option_type='put'):
         sigma = sigma - diff / vega
     return sigma * 100.0
 
+# --- Core Logic: Delta ---
+def calculate_delta(S, K, days, r_pct, iv_pct, option_type='call'):
+    T = days / 365.0
+    r = r_pct / 100.0
+    sigma = iv_pct / 100.0
+
+    if T <= 0:
+        # At expiry, Delta is binary: in-the-money -> 1/-1, out-of-the-money -> 0.
+        if option_type == 'call':
+            return 1.0 if S > K else 0.0
+        else:
+            return -1.0 if S < K else 0.0
+
+    d1 = (math.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * math.sqrt(T))
+    return norm.cdf(d1) if option_type == 'call' else norm.cdf(d1) - 1
+
 # --- Streamlit UI Design ---
 st.set_page_config(page_title="Options Pricing & IV Calculator", layout="centered")
 
@@ -59,11 +75,11 @@ with tab1:
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        S = st.number_input("Current Price (標的價)", value=420.0, step=1.0, key="s_p")
+        S = st.number_input("Current Price (標的價)", value=418.0, step=1.0, key="s_p")
         r1 = st.number_input("Risk-free Rate % (利率)", value=4.0, step=0.1, key="r_p")
     with col2:
         K = st.number_input("Strike Price (履約價)", value=390.0, step=1.0, key="k_p")
-        iv1 = st.number_input("Implied Volatility % (IV 隱含波動率)", value=52.0, step=1.0, key="iv_p")
+        iv1 = st.number_input("Implied Volatility % (IV 隱含波動率)", value=45.0, step=1.0, key="iv_p")
     with col3:
         days1 = st.number_input("Days to Expiry (天數)", value=8.0, step=1.0, key="d_p")
 
@@ -87,7 +103,7 @@ with tab2:
         K2 = st.number_input("Strike Price (履約價)", value=390.0, step=1.0, key="k_iv")
         r2 = st.number_input("Risk-free Rate % (利率)", value=4.0, step=0.1, key="r_iv")
     with col3:
-        target_price = st.number_input("Market Premium (Bid/Ask MID 權利金)", value=1.62, step=0.1, key="target_iv")
+        target_price = st.number_input("Market Premium (Bid/Ask MID 權利金)", value=1.98, step=0.1, key="target_iv")
         opt_type = st.selectbox("Option Type (類型)", ["put", "call"], key="type_iv")
 
     if st.button("Calculate Implied Volatility", type="primary", key="btn_iv"):
