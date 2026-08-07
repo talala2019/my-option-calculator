@@ -116,6 +116,9 @@ with tab2:
         st.divider()
         if iv_result is not None and iv_result > 0:
             st.success("Calculation Complete!")
-            st.metric(label=f"📊 Implied Volatility (IV)", value=f"{iv_result:.2f} %")
+            delta_result = calculate_delta(S2, K2, days2, r2, iv_result, opt_type)
+            e1, e2 = st.columns(2)
+            e1.metric(label=f"📊 Implied Volatility (IV)", value=f"{iv_result:.2f} %")
+            e2.metric(label="Δ (Delta)", value=f"{delta_result:.4f}")
         else:
             st.error("Could not converge. Please check if the premium is lower than the intrinsic value.")
