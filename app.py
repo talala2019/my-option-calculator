@@ -1,35 +1,7 @@
 import streamlit as st
 import math
 import datetime
-import json
-from pathlib import Path
 from scipy.stats import norm
-
-# --- Persistence: remember TSM/MU presets across page reloads ---
-# st.session_state only lives for one browser connection -- reloading the
-# page starts a brand new session and wipes it. A small JSON file next to
-# app.py survives reloads (it doesn't survive a fresh redeploy, which is
-# fine: this is "don't lose today's numbers on refresh", not a database).
-PRESETS_FILE = Path(__file__).resolve().parent / ".option_calc_presets.json"
-
-def load_presets_from_disk():
-    if not PRESETS_FILE.exists():
-        return None
-    try:
-        return json.loads(PRESETS_FILE.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
-
-def save_presets_to_disk(presets, active_ticker_tab1, active_ticker_tab2):
-    data = {
-        "presets": presets,
-        "active_ticker_tab1": active_ticker_tab1,
-        "active_ticker_tab2": active_ticker_tab2,
-    }
-    try:
-        PRESETS_FILE.write_text(json.dumps(data), encoding="utf-8")
-    except OSError:
-        pass
 
 # --- Core Logic: Black-Scholes Pricing ---
 def calculate_black_scholes(S, K, days, r_pct, iv_pct):
@@ -142,221 +114,82 @@ def render_result_panel(container, header, metric_label, metric_value, delta_val
         unsafe_allow_html=True,
     )
 
-# --- Streamlit UI Design ---
-st.set_page_config(page_title="Options Pricing & IV Calculator", layout="centered")
+# --- UI Section: one ticker's Pricing panel (Tab 1) ---
+# Each ticker gets fully independent widgets (own keys), so there is no
+# "which ticker is active" state to track and nothing to keep in sync --
+# what's on screen for TSM and what's on screen for MU are just two
+# ordinary sets of Streamlit widgets. That also means this data lives only
+# in st.session_state, which Streamlit already keeps private per browser
+# connection -- no shared file, so nothing for multiple visitors to leak
+# into each other. The trade-off: a page reload starts a fresh session, so
+# values reset to the defaults below, same as any other Streamlit widget.
+def render_pricing_section(ticker):
+    def k(name):
+        return f"{name}_{ticker}"
 
-st.title("📈 Options Pricing & IV Calculator")
-
-# Color the two expiry quick-fill buttons differently so they're easy to
-# tell apart at a glance: this-Friday blue, next-Friday orange. Targets the
-# `st-key-<key>` class Streamlit adds to each widget's wrapper.
-st.markdown(
-    """
-<style>
-.st-key-this_friday_p button, .st-key-this_friday_iv button { color: #1976d2 !important; }
-.st-key-next_friday_p button, .st-key-next_friday_iv button { color: #f57c00 !important; }
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
-# Per-tab memory of each ticker's last-used inputs, so switching between
-# TSM/MU doesn't lose what you typed for the other one -- and so reloading
-# the page doesn't lose it either.
-if "presets" not in st.session_state:
-    disk_data = load_presets_from_disk()
-    if disk_data:
-        st.session_state["presets"] = disk_data.get("presets", {"tab1": {}, "tab2": {}})
-        st.session_state["active_ticker_tab1"] = disk_data.get("active_ticker_tab1")
-        st.session_state["active_ticker_tab2"] = disk_data.get("active_ticker_tab2")
-    else:
-        st.session_state["presets"] = {"tab1": {}, "tab2": {}}
-        st.session_state["active_ticker_tab1"] = None
-        st.session_state["active_ticker_tab2"] = None
-
-    # This is the first run of a brand new session (e.g. right after a page
-    # reload) -- no widget has been created yet, so it's safe to seed their
-    # session_state values here, same as the ticker-button click handlers do.
-    active1 = st.session_state["active_ticker_tab1"]
-    preset1 = st.session_state["presets"]["tab1"].get(active1) if active1 else None
-    if preset1:
-        st.session_state["s_p"] = preset1["S"]
-        st.session_state["k_p"] = preset1["K"]
-        st.session_state["r_p"] = preset1["r1"]
-        st.session_state["iv_p"] = preset1["iv1"]
-        st.session_state["d_p"] = preset1["days1"]
-
-    active2 = st.session_state["active_ticker_tab2"]
-    preset2 = st.session_state["presets"]["tab2"].get(active2) if active2 else None
-    if preset2:
-        st.session_state["s_iv"] = preset2["S2"]
-        st.session_state["k_iv"] = preset2["K2"]
-        st.session_state["r_iv"] = preset2["r2"]
-        st.session_state["target_iv"] = preset2["target_price"]
-        st.session_state["d_iv"] = preset2["days2"]
-        st.session_state["type_iv"] = preset2["opt_type"]
-
-TICKERS = ["TSM", "MU"]
-# Fallback shown the first time a ticker is selected and has no saved preset
-# yet, so switching to an unseen ticker starts from a clean baseline instead
-# of carrying over whatever the previous ticker's numbers happened to be.
-DEFAULT_TAB1 = {"S": 418.0, "K": 390.0, "r1": 3.8, "iv1": 45.0, "days1": 8.0}
-DEFAULT_TAB2 = {
-    "S2": 418.0, "K2": 390.0, "r2": 3.8, "target_price": 1.98,
-    "days2": 8.0, "opt_type": "put",
-}
-
-# Create Tabs for the two main functions
-tab1, tab2 = st.tabs(["💰 Pricing (權利金計算)", "📊 Implied Volatility (IV 隱含波動率 反推)"])
-
-# --- TAB 1: PRICING ---
-with tab1:
-    st.subheader("Input Market Parameters")
-
-    # Ticker quick-switch: restores the last values you used for this ticker.
-    # Must run BEFORE the number_inputs below so the session_state values it
-    # sets are picked up as those widgets' initial values this run.
-    ticker_cols = st.columns(len(TICKERS))
-    for i, ticker in enumerate(TICKERS):
-        is_active = ticker == st.session_state["active_ticker_tab1"]
-        clicked = ticker_cols[i].button(
-            ticker, key=f"ticker_{ticker}_p", use_container_width=True,
-            type="primary" if is_active else "secondary",
-        )
-        if clicked:
-            st.session_state["active_ticker_tab1"] = ticker
-            preset = st.session_state["presets"]["tab1"].get(ticker, DEFAULT_TAB1)
-            st.session_state["s_p"] = preset["S"]
-            st.session_state["k_p"] = preset["K"]
-            st.session_state["r_p"] = preset["r1"]
-            st.session_state["iv_p"] = preset["iv1"]
-            st.session_state["d_p"] = preset["days1"]
-            # Rerun so the buttons above re-render with the new highlight --
-            # without this, the just-clicked button stays unhighlighted until
-            # the next unrelated interaction (see Tab 1's Friday-button
-            # comment below for why the same-run render can't reflect it).
-            st.rerun()
-    active_tab1 = st.session_state["active_ticker_tab1"]
-    if active_tab1:
-        st.caption(f"目前追蹤: **{active_tab1}**（輸入變更會自動記住）")
-
-    # A button placed after its target widget can't write that widget's
-    # session_state key in the same run (Streamlit forbids mutating an
-    # already-instantiated widget's key). So the click just sets a pending
-    # flag + reruns; this check -- which runs before the widget below -- is
-    # what actually applies the new value.
-    if st.session_state.pop("_apply_this_friday_p", False):
-        st.session_state["d_p"] = float(days_until_this_friday())
-    if st.session_state.pop("_apply_next_friday_p", False):
-        st.session_state["d_p"] = float(days_until_next_friday())
+    if st.session_state.pop(f"_apply_this_friday_p_{ticker}", False):
+        st.session_state[k("d_p")] = float(days_until_this_friday())
+    if st.session_state.pop(f"_apply_next_friday_p_{ticker}", False):
+        st.session_state[k("d_p")] = float(days_until_next_friday())
 
     col1, col2, col3 = st.columns(3)
-
     with col1:
-        S = st.number_input("Current Price (標的價)", value=418.0, step=1.0, key="s_p")
-        r1 = st.number_input("Risk-free Rate % (利率)", value=3.8, step=0.1, key="r_p")
+        S = st.number_input("Current Price (標的價)", value=418.0, step=1.0, key=k("s_p"))
+        r1 = st.number_input("Risk-free Rate % (利率)", value=3.8, step=0.1, key=k("r_p"))
     with col2:
-        K = st.number_input("Strike Price (履約價)", value=390.0, step=1.0, key="k_p")
-        iv1 = st.number_input("Implied Volatility % (IV 隱含波動率)", value=45.0, step=1.0, key="iv_p")
+        K = st.number_input("Strike Price (履約價)", value=390.0, step=1.0, key=k("k_p"))
+        iv1 = st.number_input("Implied Volatility % (IV 隱含波動率)", value=45.0, step=1.0, key=k("iv_p"))
     with col3:
-        days1 = st.number_input("Days to Expiry (天數)", value=8.0, step=1.0, key="d_p")
-        if st.button(f"📅 算至本週五 ({this_friday_label()})", key="this_friday_p"):
-            st.session_state["_apply_this_friday_p"] = True
+        days1 = st.number_input("Days to Expiry (天數)", value=8.0, step=1.0, key=k("d_p"))
+        if st.button(f"📅 算至本週五 ({this_friday_label()})", key=k("this_friday_p")):
+            st.session_state[f"_apply_this_friday_p_{ticker}"] = True
             st.rerun()
-        if st.button(f"📅 算至下週五 ({next_friday_label()})", key="next_friday_p"):
-            st.session_state["_apply_next_friday_p"] = True
+        if st.button(f"📅 算至下週五 ({next_friday_label()})", key=k("next_friday_p")):
+            st.session_state[f"_apply_next_friday_p_{ticker}"] = True
             st.rerun()
 
-    # Remember this ticker's latest inputs for next time it's selected --
-    # in session_state (same-session tab switches) and on disk (page reloads).
-    if active_tab1:
-        st.session_state["presets"]["tab1"][active_tab1] = {
-            "S": S, "K": K, "r1": r1, "iv1": iv1, "days1": days1,
-        }
-        save_presets_to_disk(
-            st.session_state["presets"],
-            st.session_state["active_ticker_tab1"],
-            st.session_state["active_ticker_tab2"],
-        )
-
-    if st.button("Calculate Premium", type="primary", key="btn_p"):
+    if st.button("Calculate Premium", type="primary", key=k("btn_p")):
         call, put = calculate_black_scholes(S, K, days1, r1, iv1)
         call_delta = calculate_delta(S, K, days1, r1, iv1, 'call')
         put_delta = calculate_delta(S, K, days1, r1, iv1, 'put')
         st.divider()
-        st.success(f"Calculation Complete! (for {active_tab1})" if active_tab1 else "Calculation Complete!")
+        st.success(f"Calculation Complete! (for {ticker})")
         p1, p2 = st.columns(2)
         render_result_panel(p1, "📈 買權 Call", "Price", f"${call:.4f}", call_delta, "red")
         render_result_panel(p2, "📉 賣權 Put", "Price", f"${put:.4f}", put_delta, "green")
 
-# --- TAB 2: IV CALCULATION ---
-with tab2:
-    st.subheader("Reverse IV from Market Premium")
+# --- UI Section: one ticker's Implied Volatility panel (Tab 2) ---
+def render_iv_section(ticker):
+    def k(name):
+        return f"{name}_{ticker}"
 
-    # Ticker quick-switch (same pattern as Tab 1, own memory).
-    ticker_cols2 = st.columns(len(TICKERS))
-    for i, ticker in enumerate(TICKERS):
-        is_active2 = ticker == st.session_state["active_ticker_tab2"]
-        clicked2 = ticker_cols2[i].button(
-            ticker, key=f"ticker_{ticker}_iv", use_container_width=True,
-            type="primary" if is_active2 else "secondary",
-        )
-        if clicked2:
-            st.session_state["active_ticker_tab2"] = ticker
-            preset = st.session_state["presets"]["tab2"].get(ticker, DEFAULT_TAB2)
-            st.session_state["s_iv"] = preset["S2"]
-            st.session_state["k_iv"] = preset["K2"]
-            st.session_state["r_iv"] = preset["r2"]
-            st.session_state["target_iv"] = preset["target_price"]
-            st.session_state["d_iv"] = preset["days2"]
-            st.session_state["type_iv"] = preset["opt_type"]
-            st.rerun()  # see Tab 1's comment on why this is needed for the highlight
-    active_tab2 = st.session_state["active_ticker_tab2"]
-    if active_tab2:
-        st.caption(f"目前追蹤: **{active_tab2}**（輸入變更會自動記住）")
-
-    # See Tab 1's comment: apply the pending value before the widget renders.
-    if st.session_state.pop("_apply_this_friday_iv", False):
-        st.session_state["d_iv"] = float(days_until_this_friday())
-    if st.session_state.pop("_apply_next_friday_iv", False):
-        st.session_state["d_iv"] = float(days_until_next_friday())
+    if st.session_state.pop(f"_apply_this_friday_iv_{ticker}", False):
+        st.session_state[k("d_iv")] = float(days_until_this_friday())
+    if st.session_state.pop(f"_apply_next_friday_iv_{ticker}", False):
+        st.session_state[k("d_iv")] = float(days_until_next_friday())
 
     col1, col2, col3 = st.columns(3)
-
     with col1:
-        S2 = st.number_input("Current Price (標的價)", value=418.0, step=1.0, key="s_iv")
-        days2 = st.number_input("Days to Expiry (天數)", value=8.0, step=1.0, key="d_iv")
-        if st.button(f"📅 算至本週五 ({this_friday_label()})", key="this_friday_iv"):
-            st.session_state["_apply_this_friday_iv"] = True
+        S2 = st.number_input("Current Price (標的價)", value=418.0, step=1.0, key=k("s_iv"))
+        days2 = st.number_input("Days to Expiry (天數)", value=8.0, step=1.0, key=k("d_iv"))
+        if st.button(f"📅 算至本週五 ({this_friday_label()})", key=k("this_friday_iv")):
+            st.session_state[f"_apply_this_friday_iv_{ticker}"] = True
             st.rerun()
-        if st.button(f"📅 算至下週五 ({next_friday_label()})", key="next_friday_iv"):
-            st.session_state["_apply_next_friday_iv"] = True
+        if st.button(f"📅 算至下週五 ({next_friday_label()})", key=k("next_friday_iv")):
+            st.session_state[f"_apply_next_friday_iv_{ticker}"] = True
             st.rerun()
     with col2:
-        K2 = st.number_input("Strike Price (履約價)", value=390.0, step=1.0, key="k_iv")
-        r2 = st.number_input("Risk-free Rate % (利率)", value=3.8, step=0.1, key="r_iv")
+        K2 = st.number_input("Strike Price (履約價)", value=390.0, step=1.0, key=k("k_iv"))
+        r2 = st.number_input("Risk-free Rate % (利率)", value=3.8, step=0.1, key=k("r_iv"))
     with col3:
-        target_price = st.number_input("Market Premium (Bid/Ask MID 權利金)", value=1.98, step=0.1, key="target_iv")
-        opt_type = st.selectbox("Option Type (類型)", ["put", "call"], key="type_iv")
+        target_price = st.number_input("Market Premium (Bid/Ask MID 權利金)", value=1.98, step=0.1, key=k("target_iv"))
+        opt_type = st.selectbox("Option Type (類型)", ["put", "call"], key=k("type_iv"))
 
-    # Remember this ticker's latest inputs for next time it's selected --
-    # in session_state (same-session tab switches) and on disk (page reloads).
-    if active_tab2:
-        st.session_state["presets"]["tab2"][active_tab2] = {
-            "S2": S2, "K2": K2, "r2": r2, "target_price": target_price,
-            "days2": days2, "opt_type": opt_type,
-        }
-        save_presets_to_disk(
-            st.session_state["presets"],
-            st.session_state["active_ticker_tab1"],
-            st.session_state["active_ticker_tab2"],
-        )
-
-    if st.button("Calculate Implied Volatility", type="primary", key="btn_iv"):
+    if st.button("Calculate Implied Volatility", type="primary", key=k("btn_iv")):
         iv_result = calculate_iv(S2, K2, target_price, days2, r2, opt_type)
         st.divider()
         if iv_result is not None and iv_result > 0:
-            st.success(f"Calculation Complete! (for {active_tab2})" if active_tab2 else "Calculation Complete!")
+            st.success(f"Calculation Complete! (for {ticker})")
             delta_result = calculate_delta(S2, K2, days2, r2, iv_result, opt_type)
             if opt_type == "call":
                 header, color = "📈 買權 Call", "red"
@@ -367,3 +200,44 @@ with tab2:
             )
         else:
             st.error("Could not converge. Please check if the premium is lower than the intrinsic value.")
+
+# --- Streamlit UI Design ---
+st.set_page_config(page_title="Options Pricing & IV Calculator", layout="centered")
+
+st.title("📈 Options Pricing & IV Calculator")
+
+# Color the two expiry quick-fill buttons differently so they're easy to
+# tell apart at a glance: this-Friday blue, next-Friday orange. Matches any
+# widget whose Streamlit-assigned `st-key-<key>` class contains these
+# prefixes, so it covers both tickers' buttons in both tabs without listing
+# every key explicitly.
+st.markdown(
+    """
+<style>
+[class*="st-key-this_friday"] button { color: #1976d2 !important; }
+[class*="st-key-next_friday"] button { color: #f57c00 !important; }
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+TICKERS = ["TSM", "MU"]
+
+# Create Tabs for the two main functions
+tab1, tab2 = st.tabs(["💰 Pricing (權利金計算)", "📊 Implied Volatility (IV 隱含波動率 反推)"])
+
+# --- TAB 1: PRICING ---
+with tab1:
+    st.subheader("Input Market Parameters")
+    ticker_subtabs_1 = st.tabs(TICKERS)
+    for ticker, subtab in zip(TICKERS, ticker_subtabs_1):
+        with subtab:
+            render_pricing_section(ticker)
+
+# --- TAB 2: IV CALCULATION ---
+with tab2:
+    st.subheader("Reverse IV from Market Premium")
+    ticker_subtabs_2 = st.tabs(TICKERS)
+    for ticker, subtab in zip(TICKERS, ticker_subtabs_2):
+        with subtab:
+            render_iv_section(ticker)
