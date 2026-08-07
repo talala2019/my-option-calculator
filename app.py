@@ -1,6 +1,7 @@
 import streamlit as st
 import math
 import datetime
+import pandas as pd
 from scipy.stats import norm
 
 # --- Core Logic: Black-Scholes Pricing ---
@@ -129,6 +130,21 @@ def render_pricing_section(ticker):
 
     d = TICKER_DEFAULTS[ticker]
 
+    if f"history_{ticker}" not in st.session_state:
+        st.session_state[f"history_{ticker}"] = []
+
+    # Loading a saved history row has the same timing constraint as the
+    # Friday buttons below: it can only write s_p/k_p/etc. because this runs
+    # before those widgets are (re-)created further down.
+    pending_load = st.session_state.pop(f"_load_row_{ticker}", None)
+    if pending_load is not None:
+        row = st.session_state[f"history_{ticker}"][pending_load]
+        st.session_state[k("s_p")] = row["S"]
+        st.session_state[k("k_p")] = row["K"]
+        st.session_state[k("r_p")] = row["r"]
+        st.session_state[k("iv_p")] = row["IV"]
+        st.session_state[k("d_p")] = row["days"]
+
     if st.session_state.pop(f"_apply_this_friday_p_{ticker}", False):
         st.session_state[k("d_p")] = float(days_until_this_friday())
     if st.session_state.pop(f"_apply_next_friday_p_{ticker}", False):
@@ -154,11 +170,40 @@ def render_pricing_section(ticker):
         call, put = calculate_black_scholes(S, K, days1, r1, iv1)
         call_delta = calculate_delta(S, K, days1, r1, iv1, 'call')
         put_delta = calculate_delta(S, K, days1, r1, iv1, 'put')
+        st.session_state[f"history_{ticker}"].append({
+            "S": S, "K": K, "r": r1, "IV": iv1, "days": days1,
+            "Call": round(call, 4), "Put": round(put, 4),
+            "CallΔ": round(call_delta, 4), "PutΔ": round(put_delta, 4),
+        })
         st.divider()
         st.success(f"Calculation Complete! (for {ticker})")
         p1, p2 = st.columns(2)
         render_result_panel(p1, "📈 買權 Call", "Price", f"${call:.4f}", call_delta, "red")
         render_result_panel(p2, "📉 賣權 Put", "Price", f"${put:.4f}", put_delta, "green")
+
+    # Calculation history: click a row to select it, then load it back into
+    # the inputs above or delete it. Session-only (see the module docstring
+    # comment above render_pricing_section) -- resets on reload, same as
+    # everything else here, and never written to disk.
+    history = st.session_state[f"history_{ticker}"]
+    if history:
+        st.divider()
+        st.caption(f"📜 計算紀錄（{ticker}，本次連線期間有效，reload 會清空）")
+        hist_df = pd.DataFrame(history)
+        event = st.dataframe(
+            hist_df, on_select="rerun", selection_mode="single-row",
+            key=k("history_table"), hide_index=True,
+        )
+        selected_rows = event["selection"]["rows"]
+        if selected_rows:
+            idx = selected_rows[0]
+            lc, dc = st.columns(2)
+            if lc.button("📥 載入此列", key=k("load_row"), use_container_width=True):
+                st.session_state[f"_load_row_{ticker}"] = idx
+                st.rerun()
+            if dc.button("🗑️ 刪除此列", key=k("delete_row"), use_container_width=True):
+                st.session_state[f"history_{ticker}"].pop(idx)
+                st.rerun()
 
 # --- UI Section: one ticker's Implied Volatility panel (Tab 2) ---
 def render_iv_section(ticker):
