@@ -85,11 +85,16 @@ with tab1:
 
     if st.button("Calculate Premium", type="primary", key="btn_p"):
         call, put = calculate_black_scholes(S, K, days1, r1, iv1)
+        call_delta = calculate_delta(S, K, days1, r1, iv1, 'call')
+        put_delta = calculate_delta(S, K, days1, r1, iv1, 'put')
         st.divider()
         st.success("Calculation Complete!")
         c1, c2 = st.columns(2)
         c1.metric(label="📈 Call Price (買權)", value=f"${call:.4f}")
         c2.metric(label="📉 Put Price (賣權)", value=f"${put:.4f}")
+        d1, d2 = st.columns(2)
+        d1.metric(label="Call Δ (Delta)", value=f"{call_delta:.4f}")
+        d2.metric(label="Put Δ (Delta)", value=f"{put_delta:.4f}")
 
 # --- TAB 2: IV CALCULATION ---
 with tab2:
