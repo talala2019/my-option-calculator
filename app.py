@@ -188,11 +188,26 @@ def render_pricing_section(ticker):
     history = st.session_state[f"history_{ticker}"]
     if history:
         st.divider()
-        st.caption(f"📜 計算紀錄（{ticker}，本次連線期間有效，reload 會清空）")
-        hist_df = pd.DataFrame(history)
+        st.subheader(f"📜 計算紀錄（{ticker}）")
+        st.caption("本次連線期間有效，reload 頁面會清空")
+        hist_df = pd.DataFrame(history).rename(columns={
+            "S": "股價", "K": "履約價", "r": "利率%", "IV": "IV%", "days": "天數",
+            "Call": "Call 價", "Put": "Put 價", "CallΔ": "Call Δ", "PutΔ": "Put Δ",
+        })
         event = st.dataframe(
             hist_df, on_select="rerun", selection_mode="single-row",
             key=k("history_table"), hide_index=True,
+            column_config={
+                "股價": st.column_config.NumberColumn(format="%.1f"),
+                "履約價": st.column_config.NumberColumn(format="%.1f"),
+                "利率%": st.column_config.NumberColumn(format="%.1f"),
+                "IV%": st.column_config.NumberColumn(format="%.1f"),
+                "天數": st.column_config.NumberColumn(format="%.0f"),
+                "Call 價": st.column_config.NumberColumn(format="%.2f"),
+                "Put 價": st.column_config.NumberColumn(format="%.2f"),
+                "Call Δ": st.column_config.NumberColumn(format="%.3f"),
+                "Put Δ": st.column_config.NumberColumn(format="%.3f"),
+            },
         )
         selected_rows = event["selection"]["rows"]
         if selected_rows:
