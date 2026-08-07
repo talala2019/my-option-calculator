@@ -80,6 +80,20 @@ def next_friday_label(today=None):
     target = today + datetime.timedelta(days=days_until_next_friday(today))
     return target.strftime("%Y %b %d").upper()
 
+def days_until_this_friday(today=None):
+    """Days from `today` to this week's Friday. 0 if today is Friday itself.
+    Clamped to 0 if today is Sat/Sun (that Friday has already passed)."""
+    if today is None:
+        today = datetime.date.today()
+    return max(4 - today.weekday(), 0)  # Monday=0 ... Friday=4
+
+def this_friday_label(today=None):
+    """This week's Friday date formatted like '2026 AUG 07'."""
+    if today is None:
+        today = datetime.date.today()
+    target = today + datetime.timedelta(days=days_until_this_friday(today))
+    return target.strftime("%Y %b %d").upper()
+
 # --- UI Helper: colored Call/Put result panel ---
 def render_result_panel(container, header, metric_label, metric_value, delta_value, color):
     """Render a colored card showing one option side's result + Delta.
@@ -153,6 +167,8 @@ with tab1:
     # already-instantiated widget's key). So the click just sets a pending
     # flag + reruns; this check -- which runs before the widget below -- is
     # what actually applies the new value.
+    if st.session_state.pop("_apply_this_friday_p", False):
+        st.session_state["d_p"] = float(days_until_this_friday())
     if st.session_state.pop("_apply_next_friday_p", False):
         st.session_state["d_p"] = float(days_until_next_friday())
 
@@ -166,6 +182,9 @@ with tab1:
         iv1 = st.number_input("Implied Volatility % (IV 隱含波動率)", value=45.0, step=1.0, key="iv_p")
     with col3:
         days1 = st.number_input("Days to Expiry (天數)", value=8.0, step=1.0, key="d_p")
+        if st.button(f"📅 算至本週五 ({this_friday_label()})", key="this_friday_p"):
+            st.session_state["_apply_this_friday_p"] = True
+            st.rerun()
         if st.button(f"📅 算至下週五 ({next_friday_label()})", key="next_friday_p"):
             st.session_state["_apply_next_friday_p"] = True
             st.rerun()
@@ -207,6 +226,8 @@ with tab2:
         st.caption(f"目前追蹤: **{active_tab2}**（輸入變更會自動記住）")
 
     # See Tab 1's comment: apply the pending value before the widget renders.
+    if st.session_state.pop("_apply_this_friday_iv", False):
+        st.session_state["d_iv"] = float(days_until_this_friday())
     if st.session_state.pop("_apply_next_friday_iv", False):
         st.session_state["d_iv"] = float(days_until_next_friday())
 
@@ -215,6 +236,9 @@ with tab2:
     with col1:
         S2 = st.number_input("Current Price (標的價)", value=418.0, step=1.0, key="s_iv")
         days2 = st.number_input("Days to Expiry (天數)", value=8.0, step=1.0, key="d_iv")
+        if st.button(f"📅 算至本週五 ({this_friday_label()})", key="this_friday_iv"):
+            st.session_state["_apply_this_friday_iv"] = True
+            st.rerun()
         if st.button(f"📅 算至下週五 ({next_friday_label()})", key="next_friday_iv"):
             st.session_state["_apply_next_friday_iv"] = True
             st.rerun()

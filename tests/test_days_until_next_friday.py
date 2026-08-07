@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import days_until_next_friday
+from app import days_until_next_friday, days_until_this_friday
 
 
 def test_monday_is_four_days_out():
@@ -34,3 +34,21 @@ def test_saturday_is_six_days_out():
 
 def test_sunday_is_five_days_out():
     assert days_until_next_friday(datetime.date(2026, 8, 2)) == 5
+
+
+def test_this_friday_monday_is_four_days_out():
+    assert days_until_this_friday(datetime.date(2026, 8, 3)) == 4
+
+
+def test_this_friday_on_friday_itself_is_zero():
+    assert days_until_this_friday(datetime.date(2026, 8, 7)) == 0
+
+
+def test_this_friday_on_saturday_clamps_to_zero():
+    # This week's Friday already passed; there's no valid future "this
+    # Friday" so it clamps to 0 rather than going negative.
+    assert days_until_this_friday(datetime.date(2026, 8, 8)) == 0
+
+
+def test_this_friday_on_sunday_clamps_to_zero():
+    assert days_until_this_friday(datetime.date(2026, 8, 9)) == 0
