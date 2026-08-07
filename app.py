@@ -119,6 +119,19 @@ st.set_page_config(page_title="Options Pricing & IV Calculator", layout="centere
 
 st.title("📈 Options Pricing & IV Calculator")
 
+# Color the two expiry quick-fill buttons differently so they're easy to
+# tell apart at a glance: this-Friday blue, next-Friday orange. Targets the
+# `st-key-<key>` class Streamlit adds to each widget's wrapper.
+st.markdown(
+    """
+<style>
+.st-key-this_friday_p button, .st-key-this_friday_iv button { color: #1976d2 !important; }
+.st-key-next_friday_p button, .st-key-next_friday_iv button { color: #f57c00 !important; }
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
 # Per-tab memory of each ticker's last-used inputs, so switching between
 # TSM/MU doesn't lose what you typed for the other one.
 if "presets" not in st.session_state:
