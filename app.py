@@ -138,12 +138,27 @@ def render_pricing_section(ticker):
     # before those widgets are (re-)created further down.
     pending_load = st.session_state.pop(f"_load_row_{ticker}", None)
     if pending_load is not None:
-        row = st.session_state[f"history_{ticker}"][pending_load]
-        st.session_state[k("s_p")] = row["S"]
-        st.session_state[k("k_p")] = row["K"]
-        st.session_state[k("r_p")] = row["r"]
-        st.session_state[k("iv_p")] = row["IV"]
-        st.session_state[k("d_p")] = row["days"]
+        hist_for_load = st.session_state[f"history_{ticker}"]
+        # Bounds-check: a delete elsewhere can shift/shrink the list between
+        # when this index was captured (at click time) and when it's
+        # applied (next run) -- an out-of-range index is stale, not a bug
+        # to crash on, so just skip it.
+        if 0 <= pending_load < len(hist_for_load):
+            row = hist_for_load[pending_load]
+            st.session_state[k("s_p")] = row["S"]
+            st.session_state[k("k_p")] = row["K"]
+            st.session_state[k("r_p")] = row["r"]
+            st.session_state[k("iv_p")] = row["IV"]
+            st.session_state[k("d_p")] = row["days"]
+
+    # The dataframe below remembers its last row selection across reruns by
+    # key. After a load or delete we want that selection cleared -- an old
+    # position can point at the wrong row (or nothing) once the list has
+    # changed -- but the widget can't be touched after it's rendered this
+    # run, so (like the pending-load flag above) this is applied here, one
+    # run before the dataframe widget itself is created below.
+    if st.session_state.pop(f"_clear_selection_{ticker}", False):
+        st.session_state.pop(k("history_table"), None)
 
     if st.session_state.pop(f"_apply_this_friday_p_{ticker}", False):
         st.session_state[k("d_p")] = float(days_until_this_friday())
@@ -198,9 +213,9 @@ def render_pricing_section(ticker):
         # convention as the result panels above), with dark text forced so
         # it stays readable over the light background in both themes.
         styled_hist = hist_df.style.set_properties(
-            subset=["Call 價", "Call Δ"], **{"background-color": "#fdecea", "color": "#222"}
+            subset=["Call 價", "Call Δ"], **{"background-color": "#f5c6c6", "color": "#222"}
         ).set_properties(
-            subset=["Put 價", "Put Δ"], **{"background-color": "#e6f4ea", "color": "#222"}
+            subset=["Put 價", "Put Δ"], **{"background-color": "#c3e6cb", "color": "#222"}
         )
         event = st.dataframe(
             styled_hist, on_select="rerun", selection_mode="single-row",
@@ -223,9 +238,11 @@ def render_pricing_section(ticker):
             lc, dc = st.columns(2)
             if lc.button("📥 載入此列", key=k("load_row"), use_container_width=True):
                 st.session_state[f"_load_row_{ticker}"] = idx
+                st.session_state[f"_clear_selection_{ticker}"] = True
                 st.rerun()
             if dc.button("🗑️ 刪除此列", key=k("delete_row"), use_container_width=True):
                 st.session_state[f"history_{ticker}"].pop(idx)
+                st.session_state[f"_clear_selection_{ticker}"] = True
                 st.rerun()
 
 # --- UI Section: one ticker's Implied Volatility panel (Tab 2) ---
