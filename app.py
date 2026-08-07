@@ -59,11 +59,11 @@ with tab1:
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        S = st.number_input("Current Price (標的價)", value=420.0, step=1.0, key="s_p")
+        S = st.number_input("Current Price (標的價)", value=418.0, step=1.0, key="s_p")
         r1 = st.number_input("Risk-free Rate % (利率)", value=4.0, step=0.1, key="r_p")
     with col2:
         K = st.number_input("Strike Price (履約價)", value=390.0, step=1.0, key="k_p")
-        iv1 = st.number_input("Implied Volatility % (IV 隱含波動率)", value=52.0, step=1.0, key="iv_p")
+        iv1 = st.number_input("Implied Volatility % (IV 隱含波動率)", value=45.0, step=1.0, key="iv_p")
     with col3:
         days1 = st.number_input("Days to Expiry (天數)", value=8.0, step=1.0, key="d_p")
 
