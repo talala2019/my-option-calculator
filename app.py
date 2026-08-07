@@ -1,5 +1,6 @@
 import streamlit as st
 import math
+import datetime
 from scipy.stats import norm
 
 # --- Core Logic: Black-Scholes Pricing ---
@@ -7,13 +8,13 @@ def calculate_black_scholes(S, K, days, r_pct, iv_pct):
     T = days / 365.0
     r = r_pct / 100.0
     sigma = iv_pct / 100.0
-    
+
     if T <= 0:
         return max(0, S - K), max(0, K - S)
-        
+
     d1 = (math.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * math.sqrt(T))
     d2 = d1 - sigma * math.sqrt(T)
-    
+
     call_price = S * norm.cdf(d1) - K * math.exp(-r * T) * norm.cdf(d2)
     put_price = K * math.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
     return call_price, put_price
@@ -23,20 +24,20 @@ def calculate_iv(S, K, target_price, days, r_pct, option_type='put'):
     T = days / 365.0
     r = r_pct / 100.0
     sigma = 0.5  # Initial guess
-    
+
     for i in range(100):
         d1 = (math.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * math.sqrt(T))
         d2 = d1 - sigma * math.sqrt(T)
-        
+
         if option_type == 'call':
             price = S * norm.cdf(d1) - K * math.exp(-r * T) * norm.cdf(d2)
         else:
             price = K * math.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
-            
+
         diff = price - target_price
         if abs(diff) < 1e-5:
             return sigma * 100.0
-            
+
         vega = S * norm.pdf(d1) * math.sqrt(T)
         if vega == 0:
             return None
@@ -59,6 +60,38 @@ def calculate_delta(S, K, days, r_pct, iv_pct, option_type='call'):
     d1 = (math.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * math.sqrt(T))
     return norm.cdf(d1) if option_type == 'call' else norm.cdf(d1) - 1
 
+# --- Core Logic: Days until the next Friday ---
+def days_until_next_friday(today=None):
+    """Days from `today` to the next upcoming Friday. Always strictly in the
+    future -- if `today` is itself a Friday, returns 7 (next week's Friday),
+    not 0."""
+    if today is None:
+        today = datetime.date.today()
+    days_ahead = (4 - today.weekday()) % 7  # Monday=0 ... Friday=4
+    if days_ahead == 0:
+        days_ahead = 7
+    return days_ahead
+
+# --- UI Helper: colored Call/Put result panel ---
+def render_result_panel(container, header, metric_label, metric_value, delta_value, color):
+    """Render a colored card showing one option side's result + Delta.
+    color: 'red' (買權/Call, TW market convention) or 'green' (賣權/Put)."""
+    if color == "red":
+        bg, border = "#fdecea", "#e57373"
+    else:
+        bg, border = "#e6f4ea", "#66bb6a"
+    container.markdown(
+        f"""
+<div style="background-color:{bg};border:1px solid {border};border-radius:10px;
+            padding:14px 16px;">
+  <div style="font-size:0.9rem;color:#555;margin-bottom:4px;">{header}</div>
+  <div style="font-size:1.4rem;font-weight:700;color:#222;">{metric_label}: {metric_value}</div>
+  <div style="font-size:0.95rem;color:#333;margin-top:6px;">Δ Delta: {delta_value:.4f}</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
 # --- Streamlit UI Design ---
 st.set_page_config(page_title="Options Pricing & IV Calculator", layout="centered")
 
@@ -66,22 +99,76 @@ st.title("📈 Options Pricing & IV Calculator")
 st.markdown("Calculate Black-Scholes theoretical prices or reverse-engineer Implied Volatility (IV).")
 st.markdown("This tool uses the Black-Scholes model and Newton-Raphson iteration for IV calculation.")
 
+# Per-tab memory of each ticker's last-used inputs, so switching between
+# TSM/MU doesn't lose what you typed for the other one.
+if "presets" not in st.session_state:
+    st.session_state["presets"] = {"tab1": {}, "tab2": {}}
+if "active_ticker_tab1" not in st.session_state:
+    st.session_state["active_ticker_tab1"] = None
+if "active_ticker_tab2" not in st.session_state:
+    st.session_state["active_ticker_tab2"] = None
+
+TICKERS = ["TSM", "MU"]
+# Fallback shown the first time a ticker is selected and has no saved preset
+# yet, so switching to an unseen ticker starts from a clean baseline instead
+# of carrying over whatever the previous ticker's numbers happened to be.
+DEFAULT_TAB1 = {"S": 418.0, "K": 390.0, "r1": 3.8, "iv1": 45.0, "days1": 8.0}
+DEFAULT_TAB2 = {
+    "S2": 418.0, "K2": 390.0, "r2": 3.8, "target_price": 1.98,
+    "days2": 8.0, "opt_type": "put",
+}
+
 # Create Tabs for the two main functions
 tab1, tab2 = st.tabs(["💰 Pricing (權利金計算)", "📊 Implied Volatility (IV 隱含波動率 反推)"])
 
 # --- TAB 1: PRICING ---
 with tab1:
     st.subheader("Input Market Parameters")
+
+    # Ticker quick-switch: restores the last values you used for this ticker.
+    # Must run BEFORE the number_inputs below so the session_state values it
+    # sets are picked up as those widgets' initial values this run.
+    ticker_cols = st.columns(len(TICKERS))
+    for i, ticker in enumerate(TICKERS):
+        if ticker_cols[i].button(ticker, key=f"ticker_{ticker}_p", use_container_width=True):
+            st.session_state["active_ticker_tab1"] = ticker
+            preset = st.session_state["presets"]["tab1"].get(ticker, DEFAULT_TAB1)
+            st.session_state["s_p"] = preset["S"]
+            st.session_state["k_p"] = preset["K"]
+            st.session_state["r_p"] = preset["r1"]
+            st.session_state["iv_p"] = preset["iv1"]
+            st.session_state["d_p"] = preset["days1"]
+    active_tab1 = st.session_state["active_ticker_tab1"]
+    if active_tab1:
+        st.caption(f"目前追蹤: **{active_tab1}**（輸入變更會自動記住）")
+
+    # A button placed after its target widget can't write that widget's
+    # session_state key in the same run (Streamlit forbids mutating an
+    # already-instantiated widget's key). So the click just sets a pending
+    # flag + reruns; this check -- which runs before the widget below -- is
+    # what actually applies the new value.
+    if st.session_state.pop("_apply_next_friday_p", False):
+        st.session_state["d_p"] = float(days_until_next_friday())
+
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         S = st.number_input("Current Price (標的價)", value=418.0, step=1.0, key="s_p")
-        r1 = st.number_input("Risk-free Rate % (利率)", value=4.0, step=0.1, key="r_p")
+        r1 = st.number_input("Risk-free Rate % (利率)", value=3.8, step=0.1, key="r_p")
     with col2:
         K = st.number_input("Strike Price (履約價)", value=390.0, step=1.0, key="k_p")
         iv1 = st.number_input("Implied Volatility % (IV 隱含波動率)", value=45.0, step=1.0, key="iv_p")
     with col3:
         days1 = st.number_input("Days to Expiry (天數)", value=8.0, step=1.0, key="d_p")
+        if st.button("📅 算至下週五", key="next_friday_p"):
+            st.session_state["_apply_next_friday_p"] = True
+            st.rerun()
+
+    # Remember this ticker's latest inputs for next time it's selected.
+    if active_tab1:
+        st.session_state["presets"]["tab1"][active_tab1] = {
+            "S": S, "K": K, "r1": r1, "iv1": iv1, "days1": days1,
+        }
 
     if st.button("Calculate Premium", type="primary", key="btn_p"):
         call, put = calculate_black_scholes(S, K, days1, r1, iv1)
@@ -89,27 +176,55 @@ with tab1:
         put_delta = calculate_delta(S, K, days1, r1, iv1, 'put')
         st.divider()
         st.success("Calculation Complete!")
-        c1, c2 = st.columns(2)
-        c1.metric(label="📈 Call Price (買權)", value=f"${call:.4f}")
-        c2.metric(label="📉 Put Price (賣權)", value=f"${put:.4f}")
-        c3, c4 = st.columns(2)
-        c3.metric(label="Call Δ (Delta)", value=f"{call_delta:.4f}")
-        c4.metric(label="Put Δ (Delta)", value=f"{put_delta:.4f}")
+        p1, p2 = st.columns(2)
+        render_result_panel(p1, "📈 買權 Call", "Price", f"${call:.4f}", call_delta, "red")
+        render_result_panel(p2, "📉 賣權 Put", "Price", f"${put:.4f}", put_delta, "green")
 
 # --- TAB 2: IV CALCULATION ---
 with tab2:
     st.subheader("Reverse IV from Market Premium")
+
+    # Ticker quick-switch (same pattern as Tab 1, own memory).
+    ticker_cols2 = st.columns(len(TICKERS))
+    for i, ticker in enumerate(TICKERS):
+        if ticker_cols2[i].button(ticker, key=f"ticker_{ticker}_iv", use_container_width=True):
+            st.session_state["active_ticker_tab2"] = ticker
+            preset = st.session_state["presets"]["tab2"].get(ticker, DEFAULT_TAB2)
+            st.session_state["s_iv"] = preset["S2"]
+            st.session_state["k_iv"] = preset["K2"]
+            st.session_state["r_iv"] = preset["r2"]
+            st.session_state["target_iv"] = preset["target_price"]
+            st.session_state["d_iv"] = preset["days2"]
+            st.session_state["type_iv"] = preset["opt_type"]
+    active_tab2 = st.session_state["active_ticker_tab2"]
+    if active_tab2:
+        st.caption(f"目前追蹤: **{active_tab2}**（輸入變更會自動記住）")
+
+    # See Tab 1's comment: apply the pending value before the widget renders.
+    if st.session_state.pop("_apply_next_friday_iv", False):
+        st.session_state["d_iv"] = float(days_until_next_friday())
+
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         S2 = st.number_input("Current Price (標的價)", value=418.0, step=1.0, key="s_iv")
         days2 = st.number_input("Days to Expiry (天數)", value=8.0, step=1.0, key="d_iv")
+        if st.button("📅 算至下週五", key="next_friday_iv"):
+            st.session_state["_apply_next_friday_iv"] = True
+            st.rerun()
     with col2:
         K2 = st.number_input("Strike Price (履約價)", value=390.0, step=1.0, key="k_iv")
-        r2 = st.number_input("Risk-free Rate % (利率)", value=4.0, step=0.1, key="r_iv")
+        r2 = st.number_input("Risk-free Rate % (利率)", value=3.8, step=0.1, key="r_iv")
     with col3:
         target_price = st.number_input("Market Premium (Bid/Ask MID 權利金)", value=1.98, step=0.1, key="target_iv")
         opt_type = st.selectbox("Option Type (類型)", ["put", "call"], key="type_iv")
+
+    # Remember this ticker's latest inputs for next time it's selected.
+    if active_tab2:
+        st.session_state["presets"]["tab2"][active_tab2] = {
+            "S2": S2, "K2": K2, "r2": r2, "target_price": target_price,
+            "days2": days2, "opt_type": opt_type,
+        }
 
     if st.button("Calculate Implied Volatility", type="primary", key="btn_iv"):
         iv_result = calculate_iv(S2, K2, target_price, days2, r2, opt_type)
@@ -117,8 +232,12 @@ with tab2:
         if iv_result is not None and iv_result > 0:
             st.success("Calculation Complete!")
             delta_result = calculate_delta(S2, K2, days2, r2, iv_result, opt_type)
-            e1, e2 = st.columns(2)
-            e1.metric(label="📊 Implied Volatility (IV)", value=f"{iv_result:.2f} %")
-            e2.metric(label="Δ (Delta)", value=f"{delta_result:.4f}")
+            if opt_type == "call":
+                header, color = "📈 買權 Call", "red"
+            else:
+                header, color = "📉 賣權 Put", "green"
+            render_result_panel(
+                st, header, "Implied Volatility", f"{iv_result:.2f} %", delta_result, color
+            )
         else:
             st.error("Could not converge. Please check if the premium is lower than the intrinsic value.")
