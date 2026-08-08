@@ -269,10 +269,21 @@ def compute_support_resistance(df, cur_price):
             if 0 < proj < cur_price:
                 supports.append({"Price": round(float(proj), 2), "Type": "近期低點連線"})
 
+    # Sweep every round-number level within +-25% of price (a bit wider than
+    # the +-20% display filter downstream), not just the single nearest one
+    # above/below -- otherwise a level like $1000 never becomes a candidate
+    # in the first place when price is $880 and the nearest round number
+    # ($900) is close enough to get filtered out by the +5% minimum anyway.
     step = 10 if cur_price < 100 else (50 if cur_price < 500 else 100)
-    lower_round = (cur_price // step) * step
-    supports.append({"Price": float(lower_round), "Type": "整數心理關卡"})
-    resistances.append({"Price": float(lower_round + step), "Type": "整數心理關卡"})
+    lo = int((cur_price * 0.75) // step) * step
+    hi = int((cur_price * 1.25) // step) * step + step
+    level = lo
+    while level <= hi:
+        if level > 0:
+            (supports if level < cur_price else resistances).append(
+                {"Price": float(level), "Type": "整數心理關卡"}
+            )
+        level += step
 
     return resistances, supports
 
