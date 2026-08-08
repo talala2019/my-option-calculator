@@ -77,12 +77,13 @@ def days_until_next_friday(today=None):
     return days_ahead
 
 def next_friday_label(today=None):
-    """Next Friday's date formatted like '2026 AUG 14', for display on the
-    quick-fill button."""
+    """Next Friday's date formatted like '08/14', for display on the
+    quick-fill button. Short on purpose -- the fuller '2026 AUG 14' format
+    was wrapping onto two lines inside the button in narrower layouts."""
     if today is None:
         today = datetime.date.today()
     target = today + datetime.timedelta(days=days_until_next_friday(today))
-    return target.strftime("%Y %b %d").upper()
+    return target.strftime("%m/%d")
 
 def days_until_this_friday(today=None):
     """Days from `today` to this week's Friday. 0 if today is Friday itself.
@@ -95,12 +96,12 @@ def days_until_this_friday(today=None):
     return days if days >= 0 else None
 
 def this_friday_label(today=None):
-    """This week's Friday date formatted like '2026 AUG 07'. Only call this
-    when days_until_this_friday() is not None."""
+    """This week's Friday date formatted like '08/07'. Only call this when
+    days_until_this_friday() is not None."""
     if today is None:
         today = datetime.date.today()
     target = today + datetime.timedelta(days=days_until_this_friday(today))
-    return target.strftime("%Y %b %d").upper()
+    return target.strftime("%m/%d")
 
 # --- UI Helper: colored Call/Put result panel ---
 def render_result_panel(container, header, metric_label, metric_value, delta_value, color):
@@ -570,8 +571,8 @@ st.title("📈 Options Pricing & IV Calculator")
 st.markdown(
     """
 <style>
-[class*="st-key-this_friday"] button { color: #1976d2 !important; }
-[class*="st-key-next_friday"] button { color: #f57c00 !important; }
+[class*="st-key-this_friday"] button { color: #1976d2 !important; white-space: nowrap; }
+[class*="st-key-next_friday"] button { color: #f57c00 !important; white-space: nowrap; }
 .st-key-ticker_subtabs_p [data-baseweb="tab"] p,
 .st-key-ticker_subtabs_iv [data-baseweb="tab"] p { font-size: 1.15rem !important; font-weight: 600; }
 </style>
