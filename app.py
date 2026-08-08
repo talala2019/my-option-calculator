@@ -126,13 +126,13 @@ def render_result_panel(container, header, metric_label, metric_value, delta_val
 # Fixed fallbacks if the live fetch fails (offline, API blocked/rate-limited,
 # etc.) -- the app should never crash or block on this, just fall back to a
 # reasonable ballpark, same spirit as the pre-live-price defaults.
-FALLBACK_PRICE = {"TSM": 418.0, "MU": 880.0}
+FALLBACK_PRICE = {"TSM": 418.0, "MU": 880.0, "NVDA": 224.0}
 # Strike = this % below current price. Also reused as the discount buttons'
-# preset list below (8% and 15% match TSM's/MU's own defaults exactly).
+# preset list below (5%/8%/10%/15% match TSM's/NVDA's/-/MU's own defaults).
 STRIKE_DISCOUNT_PRESETS = [5.0, 8.0, 10.0, 15.0]
-TICKER_STRIKE_DISCOUNT_PCT = {"TSM": 8.0, "MU": 15.0}
-TICKER_IV_DEFAULT = {"TSM": 43.0, "MU": 76.0}
-TICKER_PREMIUM_DEFAULT = {"TSM": 1.98, "MU": 4.5}
+TICKER_STRIKE_DISCOUNT_PCT = {"TSM": 8.0, "MU": 15.0, "NVDA": 8.0}
+TICKER_IV_DEFAULT = {"TSM": 43.0, "MU": 76.0, "NVDA": 40.0}
+TICKER_PREMIUM_DEFAULT = {"TSM": 1.98, "MU": 4.5, "NVDA": 1.2}
 
 @st.cache_data(ttl=300)  # 5 minutes -- avoid re-fetching on every rerun/click
 def fetch_live_price(symbol):
@@ -572,19 +572,14 @@ st.markdown(
 <style>
 [class*="st-key-this_friday"] button { color: #1976d2 !important; }
 [class*="st-key-next_friday"] button { color: #f57c00 !important; }
+.st-key-ticker_subtabs_p [data-baseweb="tab"] p,
+.st-key-ticker_subtabs_iv [data-baseweb="tab"] p { font-size: 1.15rem !important; font-weight: 600; }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-TICKERS = ["TSM", "MU"]
-# Starting numbers shown before you've typed anything -- just a sane
-# ballpark per ticker's actual price scale (TSM ~$418, MU ~$881 as of
-# Aug 2026), not live data. Edit freely; these aren't fetched or refreshed.
-TICKER_DEFAULTS = {
-    "TSM": {"S": 418.0, "K": 390.0, "r": 3.8, "iv": 45.0, "days": 8.0, "premium": 1.98},
-    "MU": {"S": 880.0, "K": 750.0, "r": 3.8, "iv": 78.0, "days": 8.0, "premium": 4.5},
-}
+TICKERS = ["TSM", "MU", "NVDA"]
 
 # Create Tabs for the two main functions
 tab1, tab2 = st.tabs(["💰 Pricing (權利金計算)", "📊 Implied Volatility (IV 隱含波動率 反推)"])
@@ -592,7 +587,7 @@ tab1, tab2 = st.tabs(["💰 Pricing (權利金計算)", "📊 Implied Volatility
 # --- TAB 1: PRICING ---
 with tab1:
     st.subheader("Input Market Parameters")
-    ticker_subtabs_1 = st.tabs(TICKERS)
+    ticker_subtabs_1 = st.tabs(TICKERS, key="ticker_subtabs_p")
     for ticker, subtab in zip(TICKERS, ticker_subtabs_1):
         with subtab:
             render_pricing_section(ticker)
@@ -600,7 +595,7 @@ with tab1:
 # --- TAB 2: IV CALCULATION ---
 with tab2:
     st.subheader("Reverse IV from Market Premium")
-    ticker_subtabs_2 = st.tabs(TICKERS)
+    ticker_subtabs_2 = st.tabs(TICKERS, key="ticker_subtabs_iv")
     for ticker, subtab in zip(TICKERS, ticker_subtabs_2):
         with subtab:
             render_iv_section(ticker)
