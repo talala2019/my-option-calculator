@@ -2,8 +2,10 @@ import streamlit as st
 import math
 import datetime
 import pandas as pd
+import numpy as np
 import yfinance as yf
 from scipy.stats import norm
+from scipy.signal import argrelextrema
 
 # --- Core Logic: Black-Scholes Pricing ---
 def calculate_black_scholes(S, K, days, r_pct, iv_pct):
@@ -161,6 +163,151 @@ def get_ticker_defaults(ticker):
         "days": days, "premium": TICKER_PREMIUM_DEFAULT[ticker],
     }
 
+# --- Support/Resistance analysis (adapted from talala2019/tw-stock-levels) ---
+# Institutional-flow signals from that project (法人成本防線, 法人大買/大賣K棒)
+# are dropped here: they come from FinMind's Taiwan-only institutional
+# investor data, which doesn't cover TSM/MU. Everything else (moving
+# averages, volume-based levels, swing highs/lows, trendline projections,
+# round-number levels) only needs price/volume history, so it works the
+# same for any yfinance-supported ticker.
+@st.cache_data(ttl=1800)  # 30 min -- levels don't need to be as fresh as live price
+def fetch_price_history(symbol, days=380):
+    try:
+        end = datetime.date.today()
+        start = end - datetime.timedelta(days=days)
+        df = yf.download(symbol, start=start.strftime("%Y-%m-%d"), progress=False, auto_adjust=True)
+        if df.empty:
+            return None
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        df = df.reset_index()
+        return df
+    except Exception:
+        return None
+
+def cluster_levels(candidates, cur_price, dynamic_threshold=0.015):
+    """Merge candidate levels within `dynamic_threshold` (relative) of each
+    other into clusters, each carrying its member count and the distinct
+    signal types that landed there. `candidates` is a list of
+    {"Price": float, "Type": str} dicts."""
+    if not candidates or cur_price <= 0:
+        return []
+    ordered = sorted(candidates, key=lambda c: abs(c["Price"] - cur_price))
+    clusters = []
+    for cand in ordered:
+        price = cand["Price"]
+        merged = False
+        for cl in clusters:
+            if cl["mean_price"] > 0 and abs(price - cl["mean_price"]) / cl["mean_price"] <= dynamic_threshold:
+                cl["prices"].append(price)
+                cl["types"].append(cand["Type"])
+                cl["mean_price"] = sum(cl["prices"]) / len(cl["prices"])
+                merged = True
+                break
+        if not merged:
+            clusters.append({"prices": [price], "mean_price": price, "types": [cand["Type"]]})
+    result = []
+    for cl in clusters:
+        mean_p = cl["mean_price"]
+        pct = (mean_p - cur_price) / cur_price * 100
+        result.append({
+            "Price": round(mean_p, 2), "Pct": round(pct, 1),
+            "Count": len(cl["prices"]), "Types": list(dict.fromkeys(cl["types"])),
+        })
+    return result
+
+def compute_support_resistance(df, cur_price):
+    """Returns (resistances, supports), each a list of {"Price", "Type"}
+    candidate levels (not yet clustered) above/below `cur_price`."""
+    supports, resistances = [], []
+
+    for ma in [5, 10, 20, 60, 120, 240]:
+        df[f"MA{ma}"] = df["Close"].rolling(ma).mean()
+        val = df[f"MA{ma}"].iloc[-1]
+        if pd.notna(val):
+            (supports if val < cur_price else resistances).append(
+                {"Price": round(float(val), 2), "Type": f"MA{ma}"}
+            )
+
+    df["Vol_MA20"] = df["Volume"].rolling(20).mean()
+    if len(df) >= 2:
+        y = df.iloc[-2]
+        if pd.notna(y["Vol_MA20"]) and y["Volume"] > y["Vol_MA20"]:
+            if y["Low"] < cur_price and y["Close"] > y["Open"]:
+                supports.append({"Price": round(float(y["Low"]), 2), "Type": "前日量增紅K低點"})
+            if y["High"] > cur_price and y["Close"] < y["Open"]:
+                resistances.append({"Price": round(float(y["High"]), 2), "Type": "前日量增黑K高點"})
+
+    top_vol = df.tail(120).nlargest(3, "Volume")
+    for _, row in top_vol.iterrows():
+        if row["Close"] > cur_price:
+            resistances.append({"Price": round(float(row["Close"]), 2), "Type": "大量套牢區"})
+        else:
+            supports.append({"Price": round(float(row["Close"]), 2), "Type": "大量換手支撐區"})
+
+    n_swing = 10
+    max_idx = argrelextrema(df["High"].values, np.greater_equal, order=n_swing)[0]
+    min_idx = argrelextrema(df["Low"].values, np.less_equal, order=n_swing)[0]
+    for i in max_idx[-3:]:
+        resistances.append({"Price": round(float(df["High"].iloc[i]), 2), "Type": "波段壓力"})
+    for i in min_idx[-3:]:
+        supports.append({"Price": round(float(df["Low"].iloc[i]), 2), "Type": "波段支撐"})
+
+    current_idx = len(df) - 1
+    if len(max_idx) >= 2:
+        i1, i2 = max_idx[-2], max_idx[-1]
+        if i1 != i2 and i2 < current_idx:
+            slope = (df["High"].iloc[i2] - df["High"].iloc[i1]) / (i2 - i1)
+            proj = df["High"].iloc[i2] + slope * (current_idx - i2)
+            if proj > cur_price:
+                resistances.append({"Price": round(float(proj), 2), "Type": "近期高點連線"})
+    if len(min_idx) >= 2:
+        i1, i2 = min_idx[-2], min_idx[-1]
+        if i1 != i2 and i2 < current_idx:
+            slope = (df["Low"].iloc[i2] - df["Low"].iloc[i1]) / (i2 - i1)
+            proj = df["Low"].iloc[i2] + slope * (current_idx - i2)
+            if 0 < proj < cur_price:
+                supports.append({"Price": round(float(proj), 2), "Type": "近期低點連線"})
+
+    step = 10 if cur_price < 100 else (50 if cur_price < 500 else 100)
+    lower_round = (cur_price // step) * step
+    supports.append({"Price": float(lower_round), "Type": "整數心理關卡"})
+    resistances.append({"Price": float(lower_round + step), "Type": "整數心理關卡"})
+
+    return resistances, supports
+
+def render_support_resistance(ticker, cur_price):
+    """Compact +5%~+20% resistance / -5%~-20% support reference, embedded
+    in the ticker's existing Pricing sub-tab rather than a separate tab."""
+    df = fetch_price_history(ticker)
+    if df is None or len(df) < 30:
+        st.caption("⚠️ 支撐壓力參考：歷史資料抓取失敗或不足，暫不顯示")
+        return
+
+    resistances, supports = compute_support_resistance(df, cur_price)
+    r_clusters = cluster_levels(resistances, cur_price)
+    s_clusters = cluster_levels(supports, cur_price)
+    r_filtered = sorted((c for c in r_clusters if 5 <= c["Pct"] <= 20), key=lambda c: c["Pct"])[:5]
+    s_filtered = sorted((c for c in s_clusters if -20 <= c["Pct"] <= -5), key=lambda c: -c["Pct"])[:5]
+
+    with st.expander(f"📊 {ticker} 支撐壓力參考（壓力 +5%~+20% ／支撐 -5%~-20%）"):
+        st.caption("均線、量能、波段高低點等技術訊號綜合判斷，僅供參考，非投資建議")
+        rc, sc = st.columns(2)
+        with rc:
+            st.markdown("**🔴 壓力區**")
+            if r_filtered:
+                for lv in r_filtered:
+                    st.markdown(f"- ${lv['Price']:.2f}（+{lv['Pct']:.1f}%）· {'/'.join(lv['Types'])}")
+            else:
+                st.caption("此區間無明顯壓力訊號")
+        with sc:
+            st.markdown("**🟢 支撐區**")
+            if s_filtered:
+                for lv in s_filtered:
+                    st.markdown(f"- ${lv['Price']:.2f}（{lv['Pct']:.1f}%）· {'/'.join(lv['Types'])}")
+            else:
+                st.caption("此區間無明顯支撐訊號")
+
 # --- UI Section: one ticker's Pricing panel (Tab 1) ---
 # Each ticker gets fully independent widgets (own keys), so there is no
 # "which ticker is active" state to track and nothing to keep in sync --
@@ -244,6 +391,8 @@ def render_pricing_section(ticker):
         if st.button(f"📅 算至下週五 ({next_friday_label()})", key=k("next_friday_p")):
             st.session_state[f"_apply_next_friday_p_{ticker}"] = True
             st.rerun()
+
+    render_support_resistance(ticker, S)
 
     if st.button("Calculate Premium", type="primary", key=k("btn_p")):
         call, put = calculate_black_scholes(S, K, days1, r1, iv1)
