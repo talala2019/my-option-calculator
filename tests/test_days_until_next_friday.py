@@ -44,11 +44,12 @@ def test_this_friday_on_friday_itself_is_zero():
     assert days_until_this_friday(datetime.date(2026, 8, 7)) == 0
 
 
-def test_this_friday_on_saturday_clamps_to_zero():
-    # This week's Friday already passed; there's no valid future "this
-    # Friday" so it clamps to 0 rather than going negative.
-    assert days_until_this_friday(datetime.date(2026, 8, 8)) == 0
+def test_this_friday_on_saturday_is_none():
+    # This week's Friday already passed. Returning 0 here would silently
+    # mean "today" (a Saturday) and mislabel it as Friday -- so this signals
+    # "no valid this-Friday" instead of a wrong non-negative number.
+    assert days_until_this_friday(datetime.date(2026, 8, 8)) is None
 
 
-def test_this_friday_on_sunday_clamps_to_zero():
-    assert days_until_this_friday(datetime.date(2026, 8, 9)) == 0
+def test_this_friday_on_sunday_is_none():
+    assert days_until_this_friday(datetime.date(2026, 8, 9)) is None

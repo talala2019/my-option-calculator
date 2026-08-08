@@ -84,13 +84,17 @@ def next_friday_label(today=None):
 
 def days_until_this_friday(today=None):
     """Days from `today` to this week's Friday. 0 if today is Friday itself.
-    Clamped to 0 if today is Sat/Sun (that Friday has already passed)."""
+    None if today is Sat/Sun -- that Friday has already passed, and there's
+    no non-negative day count that still means "this Friday" at that point
+    (0 would silently mean "today", mislabeling a Saturday as a Friday)."""
     if today is None:
         today = datetime.date.today()
-    return max(4 - today.weekday(), 0)  # Monday=0 ... Friday=4
+    days = 4 - today.weekday()  # Monday=0 ... Friday=4
+    return days if days >= 0 else None
 
 def this_friday_label(today=None):
-    """This week's Friday date formatted like '2026 AUG 07'."""
+    """This week's Friday date formatted like '2026 AUG 07'. Only call this
+    when days_until_this_friday() is not None."""
     if today is None:
         today = datetime.date.today()
     target = today + datetime.timedelta(days=days_until_this_friday(today))
@@ -147,9 +151,14 @@ def get_ticker_defaults(ticker):
     S = fetch_live_price(ticker) or FALLBACK_PRICE[ticker]
     discount = TICKER_STRIKE_DISCOUNT_PCT[ticker]
     K = round(S * (1 - discount / 100), 1)
+    # This week's Friday if it hasn't passed yet, otherwise next week's --
+    # there's no sensible "days to expiry" default once this week's Friday
+    # is already gone (Sat/Sun).
+    days_this_fri = days_until_this_friday()
+    days = float(days_this_fri) if days_this_fri is not None else float(days_until_next_friday())
     return {
         "S": round(S, 1), "K": K, "r": 3.8, "iv": TICKER_IV_DEFAULT[ticker],
-        "days": float(days_until_this_friday()), "premium": TICKER_PREMIUM_DEFAULT[ticker],
+        "days": days, "premium": TICKER_PREMIUM_DEFAULT[ticker],
     }
 
 # --- UI Section: one ticker's Pricing panel (Tab 1) ---
@@ -198,7 +207,9 @@ def render_pricing_section(ticker):
         st.session_state.pop(k("history_table"), None)
 
     if st.session_state.pop(f"_apply_this_friday_p_{ticker}", False):
-        st.session_state[k("d_p")] = float(days_until_this_friday())
+        days_this_fri = days_until_this_friday()
+        if days_this_fri is not None:  # button is hidden once it's None, but be defensive
+            st.session_state[k("d_p")] = float(days_this_fri)
     if st.session_state.pop(f"_apply_next_friday_p_{ticker}", False):
         st.session_state[k("d_p")] = float(days_until_next_friday())
 
@@ -226,9 +237,10 @@ def render_pricing_section(ticker):
         iv1 = st.number_input("Implied Volatility % (IV 隱含波動率)", value=d["iv"], step=1.0, key=k("iv_p"))
     with col3:
         days1 = st.number_input("Days to Expiry (天數)", value=d["days"], step=1.0, key=k("d_p"))
-        if st.button(f"📅 算至本週五 ({this_friday_label()})", key=k("this_friday_p")):
-            st.session_state[f"_apply_this_friday_p_{ticker}"] = True
-            st.rerun()
+        if days_until_this_friday() is not None:  # hidden once this week's Friday has passed
+            if st.button(f"📅 算至本週五 ({this_friday_label()})", key=k("this_friday_p")):
+                st.session_state[f"_apply_this_friday_p_{ticker}"] = True
+                st.rerun()
         if st.button(f"📅 算至下週五 ({next_friday_label()})", key=k("next_friday_p")):
             st.session_state[f"_apply_next_friday_p_{ticker}"] = True
             st.rerun()
@@ -306,7 +318,9 @@ def render_iv_section(ticker):
     d = get_ticker_defaults(ticker)
 
     if st.session_state.pop(f"_apply_this_friday_iv_{ticker}", False):
-        st.session_state[k("d_iv")] = float(days_until_this_friday())
+        days_this_fri_iv = days_until_this_friday()
+        if days_this_fri_iv is not None:
+            st.session_state[k("d_iv")] = float(days_this_fri_iv)
     if st.session_state.pop(f"_apply_next_friday_iv_{ticker}", False):
         st.session_state[k("d_iv")] = float(days_until_next_friday())
 
@@ -319,9 +333,10 @@ def render_iv_section(ticker):
     with col1:
         S2 = st.number_input("Current Price (標的價)", value=d["S"], step=1.0, key=k("s_iv"))
         days2 = st.number_input("Days to Expiry (天數)", value=d["days"], step=1.0, key=k("d_iv"))
-        if st.button(f"📅 算至本週五 ({this_friday_label()})", key=k("this_friday_iv")):
-            st.session_state[f"_apply_this_friday_iv_{ticker}"] = True
-            st.rerun()
+        if days_until_this_friday() is not None:
+            if st.button(f"📅 算至本週五 ({this_friday_label()})", key=k("this_friday_iv")):
+                st.session_state[f"_apply_this_friday_iv_{ticker}"] = True
+                st.rerun()
         if st.button(f"📅 算至下週五 ({next_friday_label()})", key=k("next_friday_iv")):
             st.session_state[f"_apply_next_friday_iv_{ticker}"] = True
             st.rerun()
