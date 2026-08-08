@@ -269,14 +269,15 @@ def compute_support_resistance(df, cur_price):
             if 0 < proj < cur_price:
                 supports.append({"Price": round(float(proj), 2), "Type": "近期低點連線"})
 
-    # Sweep every round-number level within +-25% of price (a bit wider than
-    # the +-20% display filter downstream), not just the single nearest one
+    # Sweep every round-number level within +-30% of price (a bit wider than
+    # the +-25% display filter downstream, so a level sitting right near
+    # that edge isn't lost to rounding), not just the single nearest one
     # above/below -- otherwise a level like $1000 never becomes a candidate
     # in the first place when price is $880 and the nearest round number
     # ($900) is close enough to get filtered out by the +5% minimum anyway.
     step = 10 if cur_price < 100 else (50 if cur_price < 500 else 100)
-    lo = int((cur_price * 0.75) // step) * step
-    hi = int((cur_price * 1.25) // step) * step + step
+    lo = int((cur_price * 0.70) // step) * step
+    hi = int((cur_price * 1.30) // step) * step + step
     level = lo
     while level <= hi:
         if level > 0:
@@ -298,10 +299,24 @@ def render_support_resistance(ticker, cur_price):
     resistances, supports = compute_support_resistance(df, cur_price)
     r_clusters = cluster_levels(resistances, cur_price)
     s_clusters = cluster_levels(supports, cur_price)
-    r_filtered = sorted((c for c in r_clusters if 5 <= c["Pct"] <= 20), key=lambda c: c["Pct"])[:5]
-    s_filtered = sorted((c for c in s_clusters if -20 <= c["Pct"] <= -5), key=lambda c: -c["Pct"])[:5]
+    r_filtered = sorted((c for c in r_clusters if 5 <= c["Pct"] <= 25), key=lambda c: c["Pct"])[:5]
+    s_filtered = sorted((c for c in s_clusters if -25 <= c["Pct"] <= -5), key=lambda c: -c["Pct"])[:5]
 
-    with st.expander(f"📊 {ticker} 支撐壓力參考（壓力 +5%~+20% ／支撐 -5%~-20%）"):
+    # A major historical high/low further than +-20% away doesn't just
+    # vanish -- it's still real resistance/support, just outside this
+    # window's intended "near-term" range. Surface it separately so it
+    # doesn't look like it was never considered.
+    major_high_idx = df["High"].idxmax()
+    major_high_price = float(df["High"].loc[major_high_idx])
+    major_high_date = df["Date"].loc[major_high_idx]
+    major_high_pct = (major_high_price - cur_price) / cur_price * 100 if cur_price else 0.0
+
+    major_low_idx = df["Low"].idxmin()
+    major_low_price = float(df["Low"].loc[major_low_idx])
+    major_low_date = df["Date"].loc[major_low_idx]
+    major_low_pct = (major_low_price - cur_price) / cur_price * 100 if cur_price else 0.0
+
+    with st.expander(f"📊 {ticker} 支撐壓力參考（壓力 +5%~+25% ／支撐 -5%~-25%）"):
         st.caption("均線、量能、波段高低點等技術訊號綜合判斷，僅供參考，非投資建議")
         rc, sc = st.columns(2)
         with rc:
@@ -318,6 +333,17 @@ def render_support_resistance(ticker, cur_price):
                     st.markdown(f"- ${lv['Price']:.2f}（{lv['Pct']:.1f}%）· {'/'.join(lv['Types'])}")
             else:
                 st.caption("此區間無明顯支撐訊號")
+
+        if major_high_pct > 25:
+            st.caption(
+                f"⚠️ 範圍外重大高點：${major_high_price:.2f}（+{major_high_pct:.1f}%，"
+                f"{major_high_date.strftime('%Y-%m-%d')}）"
+            )
+        if major_low_pct < -25:
+            st.caption(
+                f"⚠️ 範圍外重大低點：${major_low_price:.2f}（{major_low_pct:.1f}%，"
+                f"{major_low_date.strftime('%Y-%m-%d')}）"
+            )
 
 # --- UI Section: one ticker's Pricing panel (Tab 1) ---
 # Each ticker gets fully independent widgets (own keys), so there is no
