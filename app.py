@@ -2,6 +2,7 @@ import streamlit as st
 import math
 import datetime
 import pandas as pd
+import yfinance as yf
 from scipy.stats import norm
 
 # --- Core Logic: Black-Scholes Pricing ---
@@ -115,6 +116,42 @@ def render_result_panel(container, header, metric_label, metric_value, delta_val
         unsafe_allow_html=True,
     )
 
+# --- Live price + per-ticker default computation ---
+# Fixed fallbacks if the live fetch fails (offline, API blocked/rate-limited,
+# etc.) -- the app should never crash or block on this, just fall back to a
+# reasonable ballpark, same spirit as the pre-live-price defaults.
+FALLBACK_PRICE = {"TSM": 418.0, "MU": 880.0}
+# Strike = this % below current price. Also reused as the discount buttons'
+# preset list below (8% and 15% match TSM's/MU's own defaults exactly).
+STRIKE_DISCOUNT_PRESETS = [5.0, 8.0, 10.0, 15.0]
+TICKER_STRIKE_DISCOUNT_PCT = {"TSM": 8.0, "MU": 15.0}
+TICKER_IV_DEFAULT = {"TSM": 43.0, "MU": 76.0}
+TICKER_PREMIUM_DEFAULT = {"TSM": 1.98, "MU": 4.5}
+
+@st.cache_data(ttl=300)  # 5 minutes -- avoid re-fetching on every rerun/click
+def fetch_live_price(symbol):
+    try:
+        price = yf.Ticker(symbol).fast_info["lastPrice"]
+        if price and price > 0:
+            return float(price)
+    except Exception:
+        pass
+    return None
+
+def get_ticker_defaults(ticker):
+    """Starting values for `ticker`'s inputs: live current price (falls back
+    to a fixed ballpark if the fetch fails), strike computed as a % below
+    that price, this week's Friday for days-to-expiry, and fixed IV/rate/
+    premium starting points. Recomputed on every render, but the live-price
+    fetch itself is cached, so this is cheap."""
+    S = fetch_live_price(ticker) or FALLBACK_PRICE[ticker]
+    discount = TICKER_STRIKE_DISCOUNT_PCT[ticker]
+    K = round(S * (1 - discount / 100), 1)
+    return {
+        "S": round(S, 1), "K": K, "r": 3.8, "iv": TICKER_IV_DEFAULT[ticker],
+        "days": float(days_until_this_friday()), "premium": TICKER_PREMIUM_DEFAULT[ticker],
+    }
+
 # --- UI Section: one ticker's Pricing panel (Tab 1) ---
 # Each ticker gets fully independent widgets (own keys), so there is no
 # "which ticker is active" state to track and nothing to keep in sync --
@@ -128,7 +165,7 @@ def render_pricing_section(ticker):
     def k(name):
         return f"{name}_{ticker}"
 
-    d = TICKER_DEFAULTS[ticker]
+    d = get_ticker_defaults(ticker)
 
     if f"history_{ticker}" not in st.session_state:
         st.session_state[f"history_{ticker}"] = []
@@ -165,12 +202,27 @@ def render_pricing_section(ticker):
     if st.session_state.pop(f"_apply_next_friday_p_{ticker}", False):
         st.session_state[k("d_p")] = float(days_until_next_friday())
 
+    # A strike-discount button (below) can't write k_p after that widget is
+    # already instantiated this run either -- same pending-flag pattern.
+    pending_discount = st.session_state.pop(f"_apply_strike_discount_p_{ticker}", None)
+    if pending_discount is not None:
+        current_S = st.session_state.get(k("s_p"), d["S"])
+        st.session_state[k("k_p")] = round(current_S * (1 - pending_discount / 100), 1)
+
     col1, col2, col3 = st.columns(3)
     with col1:
         S = st.number_input("Current Price (標的價)", value=d["S"], step=1.0, key=k("s_p"))
         r1 = st.number_input("Risk-free Rate % (利率)", value=d["r"], step=0.1, key=k("r_p"))
     with col2:
         K = st.number_input("Strike Price (履約價)", value=d["K"], step=1.0, key=k("k_p"))
+        pct_cols = st.columns(len(STRIKE_DISCOUNT_PRESETS))
+        for i, pct in enumerate(STRIKE_DISCOUNT_PRESETS):
+            if pct_cols[i].button(
+                f"{pct:.0f}%", key=k(f"discount_p_{pct:.0f}"), use_container_width=True,
+                help=f"履約價 = 標的價 × {100 - pct:.0f}%",
+            ):
+                st.session_state[f"_apply_strike_discount_p_{ticker}"] = pct
+                st.rerun()
         iv1 = st.number_input("Implied Volatility % (IV 隱含波動率)", value=d["iv"], step=1.0, key=k("iv_p"))
     with col3:
         days1 = st.number_input("Days to Expiry (天數)", value=d["days"], step=1.0, key=k("d_p"))
@@ -186,7 +238,8 @@ def render_pricing_section(ticker):
         call_delta = calculate_delta(S, K, days1, r1, iv1, 'call')
         put_delta = calculate_delta(S, K, days1, r1, iv1, 'put')
         st.session_state[f"history_{ticker}"].append({
-            "S": S, "K": K, "r": r1, "IV": iv1, "days": days1,
+            "S": S, "K": K, "Discount": round(K / S * 10, 2) if S else 0.0,
+            "r": r1, "IV": iv1, "days": days1,
             "Call": round(call, 4), "Put": round(put, 4),
             "CallΔ": round(call_delta, 4), "PutΔ": round(put_delta, 4),
         })
@@ -206,7 +259,7 @@ def render_pricing_section(ticker):
         st.subheader(f"📜 計算紀錄（{ticker}）")
         st.caption("本次連線期間有效，reload 頁面會清空")
         hist_df = pd.DataFrame(history).rename(columns={
-            "S": "股價", "K": "履約價", "r": "利率%", "IV": "IV%", "days": "天數",
+            "S": "股價", "K": "履約價", "Discount": "折數", "r": "利率%", "IV": "IV%", "days": "天數",
             "Call": "Call 價", "Put": "Put 價", "CallΔ": "Call Δ", "PutΔ": "Put Δ",
         })
         # Tint the Call columns red and the Put columns green (same TW-market
@@ -223,6 +276,7 @@ def render_pricing_section(ticker):
             column_config={
                 "股價": st.column_config.NumberColumn(format="%.1f", alignment="center"),
                 "履約價": st.column_config.NumberColumn(format="%.1f", alignment="center"),
+                "折數": st.column_config.NumberColumn(format="%.2f折", alignment="center", help="履約價 ÷ 股價 × 10"),
                 "利率%": st.column_config.NumberColumn(format="%.1f", alignment="center"),
                 "IV%": st.column_config.NumberColumn(format="%.1f", alignment="center"),
                 "天數": st.column_config.NumberColumn(format="%.0f", alignment="center"),
@@ -250,12 +304,17 @@ def render_iv_section(ticker):
     def k(name):
         return f"{name}_{ticker}"
 
-    d = TICKER_DEFAULTS[ticker]
+    d = get_ticker_defaults(ticker)
 
     if st.session_state.pop(f"_apply_this_friday_iv_{ticker}", False):
         st.session_state[k("d_iv")] = float(days_until_this_friday())
     if st.session_state.pop(f"_apply_next_friday_iv_{ticker}", False):
         st.session_state[k("d_iv")] = float(days_until_next_friday())
+
+    pending_discount_iv = st.session_state.pop(f"_apply_strike_discount_iv_{ticker}", None)
+    if pending_discount_iv is not None:
+        current_S2 = st.session_state.get(k("s_iv"), d["S"])
+        st.session_state[k("k_iv")] = round(current_S2 * (1 - pending_discount_iv / 100), 1)
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -269,6 +328,14 @@ def render_iv_section(ticker):
             st.rerun()
     with col2:
         K2 = st.number_input("Strike Price (履約價)", value=d["K"], step=1.0, key=k("k_iv"))
+        pct_cols_iv = st.columns(len(STRIKE_DISCOUNT_PRESETS))
+        for i, pct in enumerate(STRIKE_DISCOUNT_PRESETS):
+            if pct_cols_iv[i].button(
+                f"{pct:.0f}%", key=k(f"discount_iv_{pct:.0f}"), use_container_width=True,
+                help=f"履約價 = 標的價 × {100 - pct:.0f}%",
+            ):
+                st.session_state[f"_apply_strike_discount_iv_{ticker}"] = pct
+                st.rerun()
         r2 = st.number_input("Risk-free Rate % (利率)", value=d["r"], step=0.1, key=k("r_iv"))
     with col3:
         target_price = st.number_input("Market Premium (Bid/Ask MID 權利金)", value=d["premium"], step=0.1, key=k("target_iv"))
