@@ -238,10 +238,10 @@ def render_pricing_section(ticker):
         call_delta = calculate_delta(S, K, days1, r1, iv1, 'call')
         put_delta = calculate_delta(S, K, days1, r1, iv1, 'put')
         st.session_state[f"history_{ticker}"].append({
-            "S": S, "K": K, "Discount": round(K / S * 10, 2) if S else 0.0,
+            "S": S, "K": K, "Discount": round(K / S * 100, 1) if S else 0.0,
             "r": r1, "IV": iv1, "days": days1,
-            "Call": round(call, 4), "Put": round(put, 4),
-            "CallΔ": round(call_delta, 4), "PutΔ": round(put_delta, 4),
+            "Call": round(call, 4), "CallΔ": round(call_delta, 4),
+            "Put": round(put, 4), "PutΔ": round(put_delta, 4),
         })
         st.divider()
         st.success(f"Calculation Complete! (for {ticker})")
@@ -262,13 +262,12 @@ def render_pricing_section(ticker):
             "S": "股價", "K": "履約價", "Discount": "折數", "r": "利率%", "IV": "IV%", "days": "天數",
             "Call": "Call 價", "Put": "Put 價", "CallΔ": "Call Δ", "PutΔ": "Put Δ",
         })
-        # Tint the Call columns red and the Put columns green (same TW-market
-        # convention as the result panels above), with dark text forced so
-        # it stays readable over the light background in both themes.
+        # Tint only the price columns red/green (same TW-market convention as
+        # the result panels above) -- Delta stays unhighlighted, plain text.
         styled_hist = hist_df.style.set_properties(
-            subset=["Call 價", "Call Δ"], **{"background-color": "#f5c6c6", "color": "#222"}
+            subset=["Call 價"], **{"background-color": "#f5c6c6", "color": "#222"}
         ).set_properties(
-            subset=["Put 價", "Put Δ"], **{"background-color": "#c3e6cb", "color": "#222"}
+            subset=["Put 價"], **{"background-color": "#c3e6cb", "color": "#222"}
         )
         event = st.dataframe(
             styled_hist, on_select="rerun", selection_mode="single-row",
@@ -276,12 +275,12 @@ def render_pricing_section(ticker):
             column_config={
                 "股價": st.column_config.NumberColumn(format="%.1f", alignment="center"),
                 "履約價": st.column_config.NumberColumn(format="%.1f", alignment="center"),
-                "折數": st.column_config.NumberColumn(format="%.2f折", alignment="center", help="履約價 ÷ 股價 × 10"),
+                "折數": st.column_config.NumberColumn(format="%.1f%%", alignment="center", help="履約價 ÷ 股價 × 100%"),
                 "利率%": st.column_config.NumberColumn(format="%.1f", alignment="center"),
                 "IV%": st.column_config.NumberColumn(format="%.1f", alignment="center"),
                 "天數": st.column_config.NumberColumn(format="%.0f", alignment="center"),
-                "Call 價": st.column_config.NumberColumn(format="%.2f", alignment="center"),
-                "Put 價": st.column_config.NumberColumn(format="%.2f", alignment="center"),
+                "Call 價": st.column_config.NumberColumn(format="$%.2f", alignment="center"),
+                "Put 價": st.column_config.NumberColumn(format="$%.2f", alignment="center"),
                 "Call Δ": st.column_config.NumberColumn(format="%.3f", alignment="center"),
                 "Put Δ": st.column_config.NumberColumn(format="%.3f", alignment="center"),
             },
