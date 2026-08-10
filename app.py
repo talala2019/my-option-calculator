@@ -66,15 +66,15 @@ def calculate_delta(S, K, days, r_pct, iv_pct, option_type='call'):
 
 # --- Core Logic: Days until the next Friday ---
 def days_until_next_friday(today=None):
-    """Days from `today` to the next upcoming Friday. Always strictly in the
-    future -- if `today` is itself a Friday, returns 7 (next week's Friday),
-    not 0."""
+    """Days from `today` to the Friday of the FOLLOWING week -- always
+    distinct from days_until_this_friday(). On Mon-Fri that means skipping
+    past this week's Friday entirely (even midweek, not just when today IS
+    Friday); on Sat/Sun, this week's Friday is already gone, so there's no
+    week to skip and this is just the nearest upcoming Friday."""
     if today is None:
         today = datetime.date.today()
-    days_ahead = (4 - today.weekday()) % 7  # Monday=0 ... Friday=4
-    if days_ahead == 0:
-        days_ahead = 7
-    return days_ahead
+    raw = 4 - today.weekday()  # Monday=4 ... Friday=0, Saturday=-1, Sunday=-2
+    return raw + 7 if raw >= 0 else raw % 7
 
 def next_friday_label(today=None):
     """Next Friday's date formatted like '08/14', for display on the
