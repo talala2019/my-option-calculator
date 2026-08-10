@@ -141,53 +141,65 @@ _HISTORY_PRINT_FORMATTERS = {
     "Call Δ": "{:.3f}".format, "Put Δ": "{:.3f}".format,
 }
 
-def render_printable_history(hist_df):
-    """A plain-HTML copy of the history table for printing/Save-as-PDF.
-    st.dataframe renders as an interactive canvas grid, which browsers
-    often print blank or truncated -- a real <table> prints reliably."""
-    print_df = hist_df.copy()
-    for col, fmt in _HISTORY_PRINT_FORMATTERS.items():
-        if col in print_df.columns:
-            print_df[col] = print_df[col].map(fmt)
-    table_html = print_df.to_html(index=False, escape=False, classes="print-history", border=0)
-    with st.expander("🖨️ 列印 / 另存 PDF 用表格"):
-        st.caption(
-            "展開後用瀏覽器列印（Ctrl+P / Cmd+P），另存目標選「PDF」即可存成 PDF；"
-            "列印時只會印這張表格。若顏色沒印出來，列印視窗裡找「背景圖形／Background graphics」選項打勾"
-        )
-        st.markdown(
-            f"""
-<style>
-table.print-history {{
-    border-collapse: collapse; width: 100%; font-size: 0.85rem;
+_PRINT_TABLE_STYLE = """
+table.print-history {
+    border-collapse: collapse; width: 100%; font-size: 0.9rem;
     print-color-adjust: exact; -webkit-print-color-adjust: exact;
-}}
-table.print-history th, table.print-history td {{
-    border: 1px solid #ccc !important; padding: 5px 9px !important; text-align: center;
-}}
-table.print-history th {{ background-color: #37474f; color: #fff; font-weight: 600; }}
-table.print-history tbody tr:nth-child(even) {{ background-color: #f7f7f7; }}
+}
+table.print-history th, table.print-history td {
+    border: 1px solid #ccc; padding: 6px 10px; text-align: center;
+}
+table.print-history th { background-color: #37474f; color: #fff; font-weight: 600; }
+table.print-history tbody tr:nth-child(even) { background-color: #f7f7f7; }
 /* Column order from render_pricing_section's history.append(): 股價,履約價,
    折數,利率%,IV%,天數,Call價,CallΔ,Put價,PutΔ -- if that order changes,
    these nth-child indices need to move with it. Only the price columns
    (7, 9) are tinted -- Delta (8, 10) stays plain, matching the interactive
    table above. */
-table.print-history th:nth-child(7), table.print-history td:nth-child(7) {{
-    background-color: #f5c6c6;
-}}
-table.print-history th:nth-child(9), table.print-history td:nth-child(9) {{
-    background-color: #c3e6cb;
-}}
-table.print-history tbody td:nth-child(7), table.print-history tbody td:nth-child(9) {{
-    color: #222;
-}}
+table.print-history th:nth-child(7), table.print-history td:nth-child(7) { background-color: #f5c6c6; color: #222; }
+table.print-history th:nth-child(9), table.print-history td:nth-child(9) { background-color: #c3e6cb; color: #222; }
+"""
+
+def render_printable_history(hist_df, ticker):
+    """A plain-HTML copy of the history table for printing/Save-as-PDF.
+    st.dataframe renders as an interactive canvas grid, which browsers
+    often print blank or truncated -- a real <table> prints reliably.
+
+    Offered as a downloadable standalone .html file rather than an
+    in-page "print only this part" CSS trick: isolating one element from
+    the rest of a live Streamlit page for printing turned out fragile in
+    practice (it either printed the whole page, or -- once the other
+    content was hidden with enough force to fix that -- clipped the
+    target itself to nothing, since it sits nested inside the very
+    containers being collapsed). A standalone page has nothing else on it
+    to fight with, so printing/saving it as PDF just works."""
+    print_df = hist_df.copy()
+    for col, fmt in _HISTORY_PRINT_FORMATTERS.items():
+        if col in print_df.columns:
+            print_df[col] = print_df[col].map(fmt)
+    table_html = print_df.to_html(index=False, escape=False, classes="print-history", border=0)
+    standalone_html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>{ticker} 計算紀錄</title>
+<style>
+body {{ font-family: -apple-system, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif; margin: 24px; }}
+{_PRINT_TABLE_STYLE}
 </style>
-<div class="print-only-history">
+</head><body>
+<h2>{ticker} 計算紀錄</h2>
 {table_html}
-</div>
-""",
-            unsafe_allow_html=True,
+</body></html>"""
+
+    with st.expander("🖨️ 列印 / 另存 PDF 用表格"):
+        st.caption("下載成獨立網頁，用瀏覽器打開後 Ctrl+P / Cmd+P 列印或另存 PDF——不受這個頁面其他內容影響")
+        st.download_button(
+            "📥 下載可列印網頁 (.html)",
+            data=standalone_html,
+            file_name=f"{ticker}_計算紀錄.html",
+            mime="text/html",
+            key=f"download_print_{ticker}",
         )
+        st.caption("下方是預覽：")
+        st.markdown(f"<style>{_PRINT_TABLE_STYLE}</style>{table_html}", unsafe_allow_html=True)
 
 # --- Live price + per-ticker default computation ---
 # Fixed fallbacks if the live fetch fails (offline, API blocked/rate-limited,
@@ -561,7 +573,7 @@ def render_pricing_section(ticker):
                 "Put Δ": st.column_config.NumberColumn(format="%.3f", alignment="center"),
             },
         )
-        render_printable_history(hist_df)
+        render_printable_history(hist_df, ticker)
 
         selected_rows = event["selection"]["rows"]
         if selected_rows:
@@ -671,33 +683,6 @@ st.markdown(
 [class*="st-key-discount_iv_m"] button { color: #2e7d32 !important; }
 .st-key-ticker_subtabs_p [data-baseweb="tab"] p,
 .st-key-ticker_subtabs_iv [data-baseweb="tab"] p { font-size: 1.15rem !important; font-weight: 600; }
-
-/* Printing the "🖨️ 列印/另存 PDF" table (render_printable_history) should
-   only print that table, not the whole app. Hide everything on the page
-   during print, then re-reveal only .print-only-history and its contents.
-   A collapsed expander elsewhere is already display:none'd by Streamlit
-   itself, so this doesn't need to worry about hiding *other* tickers'
-   print tables separately -- only an opened one is in the visible DOM at
-   all. */
-@media print {
-    /* visibility:hidden alone leaves every hidden element's layout height
-       in place -- the page is still as tall as the full app, so the
-       absolutely-positioned table (anchored to the top of that tall,
-       mostly-blank document) can land on page 2 instead of page 1.
-       Collapsing height to 0 on everything hidden fixes that; the target
-       subtree gets its height back so it still renders normally. */
-    body * { visibility: hidden !important; height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; border: 0 !important; }
-    .print-only-history, .print-only-history * {
-        visibility: visible !important; height: auto !important; overflow: visible !important;
-    }
-    .print-only-history {
-        position: absolute !important; left: 0; top: 0; width: 100% !important;
-        margin: 0 !important; padding: 0 !important;
-    }
-    .print-only-history table, .print-only-history th, .print-only-history td {
-        border: 1px solid #ccc !important;
-    }
-}
 </style>
 """,
     unsafe_allow_html=True,
