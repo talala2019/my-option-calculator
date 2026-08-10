@@ -127,13 +127,13 @@ def render_result_panel(container, header, metric_label, metric_value, delta_val
 # Fixed fallbacks if the live fetch fails (offline, API blocked/rate-limited,
 # etc.) -- the app should never crash or block on this, just fall back to a
 # reasonable ballpark, same spirit as the pre-live-price defaults.
-FALLBACK_PRICE = {"TSM": 418.0, "MU": 880.0, "NVDA": 224.0}
+FALLBACK_PRICE = {"TSM": 418.0, "MU": 880.0, "NVDA": 224.0, "AMD": 483.0, "GOOG": 353.0}
 # Strike = this % below current price. Also reused as the discount buttons'
 # preset list below (5%/8%/10%/15% match TSM's/NVDA's/-/MU's own defaults).
 STRIKE_DISCOUNT_PRESETS = [5.0, 8.0, 10.0, 15.0]
-TICKER_STRIKE_DISCOUNT_PCT = {"TSM": 8.0, "MU": 15.0, "NVDA": 8.0}
-TICKER_IV_DEFAULT = {"TSM": 43.0, "MU": 76.0, "NVDA": 40.0}
-TICKER_PREMIUM_DEFAULT = {"TSM": 1.98, "MU": 4.5, "NVDA": 1.2}
+TICKER_STRIKE_DISCOUNT_PCT = {"TSM": 8.0, "MU": 15.0, "NVDA": 8.0, "AMD": 10.0, "GOOG": 5.0}
+TICKER_IV_DEFAULT = {"TSM": 43.0, "MU": 76.0, "NVDA": 40.0, "AMD": 64.0, "GOOG": 30.0}
+TICKER_PREMIUM_DEFAULT = {"TSM": 1.98, "MU": 4.5, "NVDA": 1.2, "AMD": 2.5, "GOOG": 1.5}
 
 @st.cache_data(ttl=300)  # 5 minutes -- avoid re-fetching on every rerun/click
 def fetch_live_price(symbol):
@@ -427,7 +427,8 @@ def render_pricing_section(ticker):
     # Full-width row (not squeezed into col2) so 8 buttons have room --
     # ordered low-to-high price, like reading the strikes off a chain.
     st.caption("履約價快速選取（標的價 × ％）")
-    signed_pcts = [-p for p in reversed(STRIKE_DISCOUNT_PRESETS)] + list(STRIKE_DISCOUNT_PRESETS)
+    # +15% leftmost (red, Call side) down to -15% rightmost (green, Put side).
+    signed_pcts = list(reversed(STRIKE_DISCOUNT_PRESETS)) + [-p for p in STRIKE_DISCOUNT_PRESETS]
     pct_cols = st.columns(len(signed_pcts))
     for i, pct in enumerate(signed_pcts):
         label = f"{pct:+.0f}%"
@@ -544,7 +545,7 @@ def render_iv_section(ticker):
         opt_type = st.selectbox("Option Type (類型)", ["put", "call"], key=k("type_iv"))
 
     st.caption("履約價快速選取（標的價 × ％）")
-    signed_pcts_iv = [-p for p in reversed(STRIKE_DISCOUNT_PRESETS)] + list(STRIKE_DISCOUNT_PRESETS)
+    signed_pcts_iv = list(reversed(STRIKE_DISCOUNT_PRESETS)) + [-p for p in STRIKE_DISCOUNT_PRESETS]
     pct_cols_iv = st.columns(len(signed_pcts_iv))
     for i, pct in enumerate(signed_pcts_iv):
         label = f"{pct:+.0f}%"
@@ -589,6 +590,15 @@ st.markdown(
 [class*="st-key-next_friday"] button { color: #f57c00 !important; white-space: nowrap; }
 [class*="st-key-discount_p_"] button,
 [class*="st-key-discount_iv_"] button { white-space: nowrap; padding-left: 0.3rem; padding-right: 0.3rem; }
+/* Positive %% (strike above price, Call side) red; negative %% (Put side)
+   green -- matches the buy/sell-side convention used everywhere else.
+   "discount_p_p"/"discount_iv_p" only matches the '+' buttons because the
+   '-' ones are "discount_p_m"/"discount_iv_m" -- no overlap with the
+   "discount_p_"/"discount_iv_" tab-scope prefix itself. */
+[class*="st-key-discount_p_p"] button,
+[class*="st-key-discount_iv_p"] button { color: #d32f2f !important; }
+[class*="st-key-discount_p_m"] button,
+[class*="st-key-discount_iv_m"] button { color: #2e7d32 !important; }
 .st-key-ticker_subtabs_p [data-baseweb="tab"] p,
 .st-key-ticker_subtabs_iv [data-baseweb="tab"] p { font-size: 1.15rem !important; font-weight: 600; }
 </style>
@@ -596,7 +606,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-TICKERS = ["TSM", "MU", "NVDA"]
+TICKERS = ["TSM", "MU", "NVDA", "AMD", "GOOG"]
 
 # Create Tabs for the two main functions
 tab1, tab2 = st.tabs(["💰 Pricing (權利金計算)", "📊 Implied Volatility (IV 隱含波動率 反推)"])
