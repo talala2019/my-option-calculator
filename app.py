@@ -169,17 +169,16 @@ table.print-history th {{ background-color: #37474f; color: #fff; font-weight: 6
 table.print-history tbody tr:nth-child(even) {{ background-color: #f7f7f7; }}
 /* Column order from render_pricing_section's history.append(): 股價,履約價,
    折數,利率%,IV%,天數,Call價,CallΔ,Put價,PutΔ -- if that order changes,
-   these nth-child indices need to move with it. */
-table.print-history th:nth-child(7), table.print-history td:nth-child(7),
-table.print-history th:nth-child(8), table.print-history td:nth-child(8) {{
+   these nth-child indices need to move with it. Only the price columns
+   (7, 9) are tinted -- Delta (8, 10) stays plain, matching the interactive
+   table above. */
+table.print-history th:nth-child(7), table.print-history td:nth-child(7) {{
     background-color: #f5c6c6;
 }}
-table.print-history th:nth-child(9), table.print-history td:nth-child(9),
-table.print-history th:nth-child(10), table.print-history td:nth-child(10) {{
+table.print-history th:nth-child(9), table.print-history td:nth-child(9) {{
     background-color: #c3e6cb;
 }}
-table.print-history tbody td:nth-child(7), table.print-history tbody td:nth-child(8),
-table.print-history tbody td:nth-child(9), table.print-history tbody td:nth-child(10) {{
+table.print-history tbody td:nth-child(7), table.print-history tbody td:nth-child(9) {{
     color: #222;
 }}
 </style>
