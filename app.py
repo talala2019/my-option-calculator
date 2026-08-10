@@ -123,6 +123,15 @@ def render_result_panel(container, header, metric_label, metric_value, delta_val
         unsafe_allow_html=True,
     )
 
+def strike_pct_of_price_caption(K, S):
+    """'= 92.3% of 標的價' style live readout of how the current Strike
+    Price input compares to the current Current Price input -- recomputed
+    on every rerun from whatever's in those two widgets right now, so it
+    tracks manual edits as well as the discount/round-number buttons."""
+    if not S:
+        return "= — % of 標的價"
+    return f"= {K / S * 100:.1f}% of 標的價"
+
 # --- Live price + per-ticker default computation ---
 # Fixed fallbacks if the live fetch fails (offline, API blocked/rate-limited,
 # etc.) -- the app should never crash or block on this, just fall back to a
@@ -413,6 +422,7 @@ def render_pricing_section(ticker):
         r1 = st.number_input("Risk-free Rate % (利率)", value=d["r"], step=0.1, key=k("r_p"))
     with col2:
         K = st.number_input("Strike Price (履約價)", value=d["K"], step=1.0, key=k("k_p"))
+        st.caption(strike_pct_of_price_caption(K, S))
         iv1 = st.number_input("Implied Volatility % (IV 隱含波動率)", value=d["iv"], step=1.0, key=k("iv_p"))
     with col3:
         days1 = st.number_input("Days to Expiry (天數)", value=d["days"], step=1.0, key=k("d_p"))
@@ -539,6 +549,7 @@ def render_iv_section(ticker):
             st.rerun()
     with col2:
         K2 = st.number_input("Strike Price (履約價)", value=d["K"], step=1.0, key=k("k_iv"))
+        st.caption(strike_pct_of_price_caption(K2, S2))
         r2 = st.number_input("Risk-free Rate % (利率)", value=d["r"], step=0.1, key=k("r_iv"))
     with col3:
         target_price = st.number_input("Market Premium (Bid/Ask MID 權利金)", value=d["premium"], step=0.1, key=k("target_iv"))
