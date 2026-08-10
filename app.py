@@ -151,7 +151,7 @@ def render_printable_history(hist_df):
             print_df[col] = print_df[col].map(fmt)
     table_html = print_df.to_html(index=False, escape=False, classes="print-history", border=0)
     with st.expander("🖨️ 列印 / 另存 PDF 用表格"):
-        st.caption("展開後用瀏覽器列印（Ctrl+P / Cmd+P），另存目標選「PDF」即可存成 PDF")
+        st.caption("展開後用瀏覽器列印（Ctrl+P / Cmd+P），另存目標選「PDF」即可存成 PDF；列印時只會印這張表格，其他頁面內容會自動隱藏")
         st.markdown(
             f"""
 <style>
@@ -161,7 +161,9 @@ table.print-history th, table.print-history td {{
 }}
 table.print-history th {{ background-color: #f0f0f0; font-weight: 600; }}
 </style>
+<div class="print-only-history">
 {table_html}
+</div>
 """,
             unsafe_allow_html=True,
         )
@@ -648,6 +650,21 @@ st.markdown(
 [class*="st-key-discount_iv_m"] button { color: #2e7d32 !important; }
 .st-key-ticker_subtabs_p [data-baseweb="tab"] p,
 .st-key-ticker_subtabs_iv [data-baseweb="tab"] p { font-size: 1.15rem !important; font-weight: 600; }
+
+/* Printing the "🖨️ 列印/另存 PDF" table (render_printable_history) should
+   only print that table, not the whole app. Hide everything on the page
+   during print, then re-reveal only .print-only-history and its contents.
+   A collapsed expander elsewhere is already display:none'd by Streamlit
+   itself, so this doesn't need to worry about hiding *other* tickers'
+   print tables separately -- only an opened one is in the visible DOM at
+   all. */
+@media print {
+    body * { visibility: hidden !important; }
+    .print-only-history, .print-only-history * { visibility: visible !important; }
+    .print-only-history {
+        position: absolute !important; left: 0; top: 0; width: 100% !important;
+    }
+}
 </style>
 """,
     unsafe_allow_html=True,
