@@ -163,7 +163,7 @@ table.print-history {{
     print-color-adjust: exact; -webkit-print-color-adjust: exact;
 }}
 table.print-history th, table.print-history td {{
-    border: 1px solid #ccc; padding: 5px 9px; text-align: center;
+    border: 1px solid #ccc !important; padding: 5px 9px !important; text-align: center;
 }}
 table.print-history th {{ background-color: #37474f; color: #fff; font-weight: 600; }}
 table.print-history tbody tr:nth-child(even) {{ background-color: #f7f7f7; }}
@@ -680,10 +680,22 @@ st.markdown(
    print tables separately -- only an opened one is in the visible DOM at
    all. */
 @media print {
-    body * { visibility: hidden !important; }
-    .print-only-history, .print-only-history * { visibility: visible !important; }
+    /* visibility:hidden alone leaves every hidden element's layout height
+       in place -- the page is still as tall as the full app, so the
+       absolutely-positioned table (anchored to the top of that tall,
+       mostly-blank document) can land on page 2 instead of page 1.
+       Collapsing height to 0 on everything hidden fixes that; the target
+       subtree gets its height back so it still renders normally. */
+    body * { visibility: hidden !important; height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; border: 0 !important; }
+    .print-only-history, .print-only-history * {
+        visibility: visible !important; height: auto !important; overflow: visible !important;
+    }
     .print-only-history {
         position: absolute !important; left: 0; top: 0; width: 100% !important;
+        margin: 0 !important; padding: 0 !important;
+    }
+    .print-only-history table, .print-only-history th, .print-only-history td {
+        border: 1px solid #ccc !important;
     }
 }
 </style>
