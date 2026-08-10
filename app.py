@@ -132,6 +132,40 @@ def strike_pct_of_price_caption(K, S):
         return "= — % of 標的價"
     return f"= {K / S * 100:.1f}% of 標的價"
 
+# Column formatters for the printable history table, matching the
+# column_config formats used on the interactive st.dataframe version above.
+_HISTORY_PRINT_FORMATTERS = {
+    "股價": "{:.1f}".format, "履約價": "{:.1f}".format,
+    "折數": "{:.1f}%".format, "利率%": "{:.1f}".format, "IV%": "{:.1f}".format,
+    "天數": "{:.0f}".format, "Call 價": "${:.2f}".format, "Put 價": "${:.2f}".format,
+    "Call Δ": "{:.3f}".format, "Put Δ": "{:.3f}".format,
+}
+
+def render_printable_history(hist_df):
+    """A plain-HTML copy of the history table for printing/Save-as-PDF.
+    st.dataframe renders as an interactive canvas grid, which browsers
+    often print blank or truncated -- a real <table> prints reliably."""
+    print_df = hist_df.copy()
+    for col, fmt in _HISTORY_PRINT_FORMATTERS.items():
+        if col in print_df.columns:
+            print_df[col] = print_df[col].map(fmt)
+    table_html = print_df.to_html(index=False, escape=False, classes="print-history", border=0)
+    with st.expander("🖨️ 列印 / 另存 PDF 用表格"):
+        st.caption("展開後用瀏覽器列印（Ctrl+P / Cmd+P），另存目標選「PDF」即可存成 PDF")
+        st.markdown(
+            f"""
+<style>
+table.print-history {{ border-collapse: collapse; width: 100%; font-size: 0.85rem; }}
+table.print-history th, table.print-history td {{
+    border: 1px solid #ccc; padding: 5px 9px; text-align: center;
+}}
+table.print-history th {{ background-color: #f0f0f0; font-weight: 600; }}
+</style>
+{table_html}
+""",
+            unsafe_allow_html=True,
+        )
+
 # --- Live price + per-ticker default computation ---
 # Fixed fallbacks if the live fetch fails (offline, API blocked/rate-limited,
 # etc.) -- the app should never crash or block on this, just fall back to a
@@ -504,6 +538,8 @@ def render_pricing_section(ticker):
                 "Put Δ": st.column_config.NumberColumn(format="%.3f", alignment="center"),
             },
         )
+        render_printable_history(hist_df)
+
         selected_rows = event["selection"]["rows"]
         if selected_rows:
             idx = selected_rows[0]
