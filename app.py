@@ -151,15 +151,37 @@ def render_printable_history(hist_df):
             print_df[col] = print_df[col].map(fmt)
     table_html = print_df.to_html(index=False, escape=False, classes="print-history", border=0)
     with st.expander("🖨️ 列印 / 另存 PDF 用表格"):
-        st.caption("展開後用瀏覽器列印（Ctrl+P / Cmd+P），另存目標選「PDF」即可存成 PDF；列印時只會印這張表格，其他頁面內容會自動隱藏")
+        st.caption(
+            "展開後用瀏覽器列印（Ctrl+P / Cmd+P），另存目標選「PDF」即可存成 PDF；"
+            "列印時只會印這張表格。若顏色沒印出來，列印視窗裡找「背景圖形／Background graphics」選項打勾"
+        )
         st.markdown(
             f"""
 <style>
-table.print-history {{ border-collapse: collapse; width: 100%; font-size: 0.85rem; }}
+table.print-history {{
+    border-collapse: collapse; width: 100%; font-size: 0.85rem;
+    print-color-adjust: exact; -webkit-print-color-adjust: exact;
+}}
 table.print-history th, table.print-history td {{
     border: 1px solid #ccc; padding: 5px 9px; text-align: center;
 }}
-table.print-history th {{ background-color: #f0f0f0; font-weight: 600; }}
+table.print-history th {{ background-color: #37474f; color: #fff; font-weight: 600; }}
+table.print-history tbody tr:nth-child(even) {{ background-color: #f7f7f7; }}
+/* Column order from render_pricing_section's history.append(): 股價,履約價,
+   折數,利率%,IV%,天數,Call價,CallΔ,Put價,PutΔ -- if that order changes,
+   these nth-child indices need to move with it. */
+table.print-history th:nth-child(7), table.print-history td:nth-child(7),
+table.print-history th:nth-child(8), table.print-history td:nth-child(8) {{
+    background-color: #f5c6c6;
+}}
+table.print-history th:nth-child(9), table.print-history td:nth-child(9),
+table.print-history th:nth-child(10), table.print-history td:nth-child(10) {{
+    background-color: #c3e6cb;
+}}
+table.print-history tbody td:nth-child(7), table.print-history tbody td:nth-child(8),
+table.print-history tbody td:nth-child(9), table.print-history tbody td:nth-child(10) {{
+    color: #222;
+}}
 </style>
 <div class="print-only-history">
 {table_html}
