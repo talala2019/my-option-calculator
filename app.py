@@ -398,12 +398,14 @@ def render_pricing_section(ticker):
     if st.session_state.pop(f"_apply_next_friday_p_{ticker}", False):
         st.session_state[k("d_p")] = float(days_until_next_friday())
 
-    # A strike-discount button (below) can't write k_p after that widget is
-    # already instantiated this run either -- same pending-flag pattern.
-    pending_discount = st.session_state.pop(f"_apply_strike_discount_p_{ticker}", None)
-    if pending_discount is not None:
+    # A strike-quick-select button (below) can't write k_p after that widget
+    # is already instantiated this run either -- same pending-flag pattern.
+    # The stored value is a SIGNED percent: positive = strike above price,
+    # negative = strike below price -- so applying it is just one formula.
+    pending_pct = st.session_state.pop(f"_apply_strike_pct_p_{ticker}", None)
+    if pending_pct is not None:
         current_S = st.session_state.get(k("s_p"), d["S"])
-        st.session_state[k("k_p")] = round(current_S * (1 - pending_discount / 100), 1)
+        st.session_state[k("k_p")] = round(current_S * (1 + pending_pct / 100), 1)
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -411,14 +413,6 @@ def render_pricing_section(ticker):
         r1 = st.number_input("Risk-free Rate % (利率)", value=d["r"], step=0.1, key=k("r_p"))
     with col2:
         K = st.number_input("Strike Price (履約價)", value=d["K"], step=1.0, key=k("k_p"))
-        pct_cols = st.columns(len(STRIKE_DISCOUNT_PRESETS))
-        for i, pct in enumerate(STRIKE_DISCOUNT_PRESETS):
-            if pct_cols[i].button(
-                f"{pct:.0f}%", key=k(f"discount_p_{pct:.0f}"), use_container_width=True,
-                help=f"履約價 = 標的價 × {100 - pct:.0f}%",
-            ):
-                st.session_state[f"_apply_strike_discount_p_{ticker}"] = pct
-                st.rerun()
         iv1 = st.number_input("Implied Volatility % (IV 隱含波動率)", value=d["iv"], step=1.0, key=k("iv_p"))
     with col3:
         days1 = st.number_input("Days to Expiry (天數)", value=d["days"], step=1.0, key=k("d_p"))
@@ -428,6 +422,21 @@ def render_pricing_section(ticker):
                 st.rerun()
         if st.button(f"📅 算至下週五 ({next_friday_label()})", key=k("next_friday_p")):
             st.session_state[f"_apply_next_friday_p_{ticker}"] = True
+            st.rerun()
+
+    # Full-width row (not squeezed into col2) so 8 buttons have room --
+    # ordered low-to-high price, like reading the strikes off a chain.
+    st.caption("履約價快速選取（標的價 × ％）")
+    signed_pcts = [-p for p in reversed(STRIKE_DISCOUNT_PRESETS)] + list(STRIKE_DISCOUNT_PRESETS)
+    pct_cols = st.columns(len(signed_pcts))
+    for i, pct in enumerate(signed_pcts):
+        label = f"{pct:+.0f}%"
+        safe_key = f"discount_p_{'m' if pct < 0 else 'p'}{abs(pct):.0f}"
+        if pct_cols[i].button(
+            label, key=k(safe_key), use_container_width=True,
+            help=f"履約價 = 標的價 × {100 + pct:.0f}%",
+        ):
+            st.session_state[f"_apply_strike_pct_p_{ticker}"] = pct
             st.rerun()
 
     render_support_resistance(ticker, S)
@@ -511,10 +520,10 @@ def render_iv_section(ticker):
     if st.session_state.pop(f"_apply_next_friday_iv_{ticker}", False):
         st.session_state[k("d_iv")] = float(days_until_next_friday())
 
-    pending_discount_iv = st.session_state.pop(f"_apply_strike_discount_iv_{ticker}", None)
-    if pending_discount_iv is not None:
+    pending_pct_iv = st.session_state.pop(f"_apply_strike_pct_iv_{ticker}", None)
+    if pending_pct_iv is not None:
         current_S2 = st.session_state.get(k("s_iv"), d["S"])
-        st.session_state[k("k_iv")] = round(current_S2 * (1 - pending_discount_iv / 100), 1)
+        st.session_state[k("k_iv")] = round(current_S2 * (1 + pending_pct_iv / 100), 1)
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -529,18 +538,23 @@ def render_iv_section(ticker):
             st.rerun()
     with col2:
         K2 = st.number_input("Strike Price (履約價)", value=d["K"], step=1.0, key=k("k_iv"))
-        pct_cols_iv = st.columns(len(STRIKE_DISCOUNT_PRESETS))
-        for i, pct in enumerate(STRIKE_DISCOUNT_PRESETS):
-            if pct_cols_iv[i].button(
-                f"{pct:.0f}%", key=k(f"discount_iv_{pct:.0f}"), use_container_width=True,
-                help=f"履約價 = 標的價 × {100 - pct:.0f}%",
-            ):
-                st.session_state[f"_apply_strike_discount_iv_{ticker}"] = pct
-                st.rerun()
         r2 = st.number_input("Risk-free Rate % (利率)", value=d["r"], step=0.1, key=k("r_iv"))
     with col3:
         target_price = st.number_input("Market Premium (Bid/Ask MID 權利金)", value=d["premium"], step=0.1, key=k("target_iv"))
         opt_type = st.selectbox("Option Type (類型)", ["put", "call"], key=k("type_iv"))
+
+    st.caption("履約價快速選取（標的價 × ％）")
+    signed_pcts_iv = [-p for p in reversed(STRIKE_DISCOUNT_PRESETS)] + list(STRIKE_DISCOUNT_PRESETS)
+    pct_cols_iv = st.columns(len(signed_pcts_iv))
+    for i, pct in enumerate(signed_pcts_iv):
+        label = f"{pct:+.0f}%"
+        safe_key = f"discount_iv_{'m' if pct < 0 else 'p'}{abs(pct):.0f}"
+        if pct_cols_iv[i].button(
+            label, key=k(safe_key), use_container_width=True,
+            help=f"履約價 = 標的價 × {100 + pct:.0f}%",
+        ):
+            st.session_state[f"_apply_strike_pct_iv_{ticker}"] = pct
+            st.rerun()
 
     if st.button("Calculate Implied Volatility", type="primary", key=k("btn_iv")):
         iv_result = calculate_iv(S2, K2, target_price, days2, r2, opt_type)
@@ -573,6 +587,8 @@ st.markdown(
 <style>
 [class*="st-key-this_friday"] button { color: #1976d2 !important; white-space: nowrap; }
 [class*="st-key-next_friday"] button { color: #f57c00 !important; white-space: nowrap; }
+[class*="st-key-discount_p_"] button,
+[class*="st-key-discount_iv_"] button { white-space: nowrap; padding-left: 0.3rem; padding-right: 0.3rem; }
 .st-key-ticker_subtabs_p [data-baseweb="tab"] p,
 .st-key-ticker_subtabs_iv [data-baseweb="tab"] p { font-size: 1.15rem !important; font-weight: 600; }
 </style>
