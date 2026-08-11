@@ -141,6 +141,29 @@ _HISTORY_PRINT_FORMATTERS = {
     "Call Δ": "{:.3f}".format, "Put Δ": "{:.3f}".format,
 }
 
+HISTORY_STATUS_OPTIONS = ["一般", "已成交", "觀察中"]
+_STATUS_ROW_COLOR = {"已成交": "#c3e6cb", "觀察中": "#fff9c4"}
+
+def _status_row_background(row):
+    """Styler .apply(axis=1) callback: tint the whole row by its 標記
+    (status) column, so a manually-noted trade is visually flagged the same
+    way whether you're looking at the on-screen table or the printed one."""
+    color = _STATUS_ROW_COLOR.get(row.get("標記"))
+    if not color:
+        return [""] * len(row)
+    return [f"background-color: {color}"] * len(row)
+
+def style_history_table(df):
+    """Shared styling for both the interactive st.dataframe table and the
+    print/PDF export -- row tint by status first, then Call/Put price
+    columns' own fixed red/green on top (those always win over the row
+    tint, since they're applied after in the chain)."""
+    return df.style.apply(_status_row_background, axis=1).set_properties(
+        subset=["Call 價"], **{"background-color": "#f5c6c6", "color": "#222"}
+    ).set_properties(
+        subset=["Put 價"], **{"background-color": "#c3e6cb", "color": "#222"}
+    )
+
 _PRINT_TABLE_STYLE = """
 table.print-history {
     border-collapse: collapse; width: 100%; font-size: 0.9rem;
@@ -149,15 +172,8 @@ table.print-history {
 table.print-history th, table.print-history td {
     border: 1px solid #ccc; padding: 6px 10px; text-align: center;
 }
-table.print-history th { background-color: #37474f; color: #fff; font-weight: 600; }
-table.print-history tbody tr:nth-child(even) { background-color: #f7f7f7; }
-/* Column order from render_pricing_section's history.append(): 股價,履約價,
-   折數,利率%,IV%,天數,Call價,CallΔ,Put價,PutΔ -- if that order changes,
-   these nth-child indices need to move with it. Only the price columns
-   (7, 9) are tinted -- Delta (8, 10) stays plain, matching the interactive
-   table above. */
-table.print-history th:nth-child(7), table.print-history td:nth-child(7) { background-color: #f5c6c6; color: #222; }
-table.print-history th:nth-child(9), table.print-history td:nth-child(9) { background-color: #c3e6cb; color: #222; }
+table.print-history thead th { background-color: #37474f; color: #fff; font-weight: 600; }
+table.print-history tbody tr:nth-child(even) td { background-color: #f7f7f7; }
 """
 
 def render_printable_history(hist_df, ticker):
@@ -177,7 +193,12 @@ def render_printable_history(hist_df, ticker):
     for col, fmt in _HISTORY_PRINT_FORMATTERS.items():
         if col in print_df.columns:
             print_df[col] = print_df[col].map(fmt)
-    table_html = print_df.to_html(index=False, escape=False, classes="print-history", border=0)
+    # Reuse the same row-status + Call/Put tinting as the on-screen table
+    # (via pandas Styler), so a manually-marked "已成交"/"觀察中" row and
+    # the price colors carry over into the exported page automatically.
+    table_html = style_history_table(print_df).set_table_attributes(
+        'class="print-history"'
+    ).hide(axis="index").to_html()
     standalone_html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>{ticker} 計算紀錄</title>
 <style>
@@ -530,6 +551,7 @@ def render_pricing_section(ticker):
             "r": r1, "IV": iv1, "days": days1,
             "Call": round(call, 4), "CallΔ": round(call_delta, 4),
             "Put": round(put, 4), "PutΔ": round(put_delta, 4),
+            "Note": "", "Status": "一般",
         })
         st.divider()
         st.success(f"Calculation Complete! (for {ticker})")
@@ -549,14 +571,11 @@ def render_pricing_section(ticker):
         hist_df = pd.DataFrame(history).rename(columns={
             "S": "股價", "K": "履約價", "Discount": "折數", "r": "利率%", "IV": "IV%", "days": "天數",
             "Call": "Call 價", "Put": "Put 價", "CallΔ": "Call Δ", "PutΔ": "Put Δ",
+            "Note": "備註", "Status": "標記",
         })
-        # Tint only the price columns red/green (same TW-market convention as
-        # the result panels above) -- Delta stays unhighlighted, plain text.
-        styled_hist = hist_df.style.set_properties(
-            subset=["Call 價"], **{"background-color": "#f5c6c6", "color": "#222"}
-        ).set_properties(
-            subset=["Put 價"], **{"background-color": "#c3e6cb", "color": "#222"}
-        )
+        # Row tinted by 標記 (status), Call/Put price columns keep their own
+        # fixed red/green regardless -- see style_history_table's docstring.
+        styled_hist = style_history_table(hist_df)
         event = st.dataframe(
             styled_hist, on_select="rerun", selection_mode="single-row",
             key=k("history_table"), hide_index=True,
@@ -571,6 +590,8 @@ def render_pricing_section(ticker):
                 "Put 價": st.column_config.NumberColumn(format="$%.2f", alignment="center"),
                 "Call Δ": st.column_config.NumberColumn(format="%.3f", alignment="center"),
                 "Put Δ": st.column_config.NumberColumn(format="%.3f", alignment="center"),
+                "備註": st.column_config.TextColumn(width="medium"),
+                "標記": st.column_config.TextColumn(width="small"),
             },
         )
         render_printable_history(hist_df, ticker)
@@ -578,7 +599,7 @@ def render_pricing_section(ticker):
         selected_rows = event["selection"]["rows"]
         if selected_rows:
             idx = selected_rows[0]
-            lc, dc = st.columns(2)
+            lc, dc, ec = st.columns(3)
             if lc.button("📥 載入此列", key=k("load_row"), use_container_width=True):
                 st.session_state[f"_load_row_{ticker}"] = idx
                 st.session_state[f"_clear_selection_{ticker}"] = True
@@ -586,6 +607,32 @@ def render_pricing_section(ticker):
             if dc.button("🗑️ 刪除此列", key=k("delete_row"), use_container_width=True):
                 st.session_state[f"history_{ticker}"].pop(idx)
                 st.session_state[f"_clear_selection_{ticker}"] = True
+                st.rerun()
+            if ec.button("✏️ 編輯備註", key=k("edit_row"), use_container_width=True):
+                st.session_state[f"_editing_note_{ticker}"] = idx
+                st.rerun()
+
+        editing_idx = st.session_state.get(f"_editing_note_{ticker}")
+        if editing_idx is not None and 0 <= editing_idx < len(history):
+            row_data = history[editing_idx]
+            with st.form(key=k("edit_note_form")):
+                st.caption(f"編輯第 {editing_idx + 1} 列備註（{ticker}）")
+                note_val = st.text_input("備註", value=row_data.get("Note", ""), key=k("edit_note_input"))
+                status_val = st.selectbox(
+                    "標記", HISTORY_STATUS_OPTIONS,
+                    index=HISTORY_STATUS_OPTIONS.index(row_data.get("Status", "一般")),
+                    key=k("edit_status_input"),
+                )
+                save_col, cancel_col = st.columns(2)
+                saved = save_col.form_submit_button("💾 儲存", use_container_width=True, key=k("edit_note_save"))
+                cancelled = cancel_col.form_submit_button("取消", use_container_width=True, key=k("edit_note_cancel"))
+            if saved:
+                history[editing_idx]["Note"] = note_val
+                history[editing_idx]["Status"] = status_val
+                st.session_state.pop(f"_editing_note_{ticker}", None)
+                st.rerun()
+            if cancelled:
+                st.session_state.pop(f"_editing_note_{ticker}", None)
                 st.rerun()
 
 # --- UI Section: one ticker's Implied Volatility panel (Tab 2) ---
