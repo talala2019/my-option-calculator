@@ -612,9 +612,15 @@ def render_pricing_section(ticker):
         # Row tinted by 標記 (status), Call/Put price columns keep their own
         # fixed red/green regardless -- see style_history_table's docstring.
         styled_hist = style_history_table(hist_df)
+        # height="auto" (the default) is supposed to size to the row count,
+        # but its own calculation runs a bit short in practice and clips
+        # the last row's bottom edge. Size it explicitly instead: header +
+        # one row per entry, capped at 12 rows tall before it scrolls.
+        visible_rows = min(len(hist_df), 12)
+        table_height = 38 + 35 * visible_rows + 6
         event = st.dataframe(
             styled_hist, on_select="rerun", selection_mode="single-row",
-            key=k("history_table"), hide_index=True,
+            key=k("history_table"), hide_index=True, height=table_height,
             column_config={
                 "股價": st.column_config.NumberColumn(format="%.1f", alignment="center"),
                 "履約價": st.column_config.NumberColumn(format="%.1f", alignment="center"),
