@@ -141,8 +141,13 @@ _HISTORY_PRINT_FORMATTERS = {
     "Call Δ": "{:.3f}".format, "Put Δ": "{:.3f}".format,
 }
 
-HISTORY_STATUS_OPTIONS = ["一般", "已成交", "觀察中"]
-_STATUS_ROW_COLOR = {"已成交": "#bbdefb", "觀察中": "#fff9c4"}
+HISTORY_STATUS_OPTIONS = ["一般", "已成交", "收盤", "盤前", "盤中", "估價"]
+_STATUS_ROW_COLOR = {
+    "已成交": "#bbdefb",  # light blue
+    "盤前": "#fff9c4",    # light yellow
+    "估價": "#c8e6c9",    # light green
+    # 一般 / 收盤 / 盤中: no color
+}
 
 def _status_row_background(row):
     """Styler .apply(axis=1) callback: tint the whole row by its 標記
