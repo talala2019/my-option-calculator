@@ -142,7 +142,7 @@ _HISTORY_PRINT_FORMATTERS = {
 }
 
 HISTORY_STATUS_OPTIONS = ["一般", "已成交", "觀察中"]
-_STATUS_ROW_COLOR = {"已成交": "#c3e6cb", "觀察中": "#fff9c4"}
+_STATUS_ROW_COLOR = {"已成交": "#bbdefb", "觀察中": "#fff9c4"}
 
 def _status_row_background(row):
     """Styler .apply(axis=1) callback: tint the whole row by its 標記
@@ -157,23 +157,33 @@ def style_history_table(df):
     """Shared styling for both the interactive st.dataframe table and the
     print/PDF export -- row tint by status first, then Call/Put price
     columns' own fixed red/green on top (those always win over the row
-    tint, since they're applied after in the chain)."""
-    return df.style.apply(_status_row_background, axis=1).set_properties(
-        subset=["Call 價"], **{"background-color": "#f5c6c6", "color": "#222"}
-    ).set_properties(
-        subset=["Put 價"], **{"background-color": "#c3e6cb", "color": "#222"}
-    )
+    tint, since they're applied after in the chain). Either price column
+    may be absent (the Call/Put visibility checkboxes can drop them), so
+    each tint is only applied if that column actually survived."""
+    styled = df.style.apply(_status_row_background, axis=1)
+    if "Call 價" in df.columns:
+        styled = styled.set_properties(subset=["Call 價"], **{"background-color": "#f5c6c6", "color": "#222"})
+    if "Put 價" in df.columns:
+        styled = styled.set_properties(subset=["Put 價"], **{"background-color": "#c3e6cb", "color": "#222"})
+    return styled
 
 _PRINT_TABLE_STYLE = """
 table.print-history {
-    border-collapse: collapse; width: 100%; font-size: 0.9rem;
+    border-collapse: collapse; width: auto; min-width: 100%; font-size: 0.9rem;
     print-color-adjust: exact; -webkit-print-color-adjust: exact;
 }
 table.print-history th, table.print-history td {
     border: 1px solid #ccc; padding: 6px 10px; text-align: center;
 }
+/* Headers are short labels (股價/利率%/標記/...) that only wrapped because
+   the table was squeezed into a narrow column -- keep them on one line and
+   let the table itself grow wider (scrolling sideways if needed) instead. */
+table.print-history th { white-space: nowrap; }
 table.print-history thead th { background-color: #37474f; color: #fff; font-weight: 600; }
 table.print-history tbody tr:nth-child(even) td { background-color: #f7f7f7; }
+@media print {
+    @page { size: landscape; }
+}
 """
 
 def render_printable_history(hist_df, ticker):
@@ -204,10 +214,11 @@ def render_printable_history(hist_df, ticker):
 <style>
 body {{ font-family: -apple-system, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif; margin: 24px; }}
 {_PRINT_TABLE_STYLE}
+.print-scroll {{ overflow-x: auto; }}
 </style>
 </head><body>
 <h2>{ticker} 計算紀錄</h2>
-{table_html}
+<div class="print-scroll">{table_html}</div>
 </body></html>"""
 
     with st.expander("🖨️ 列印 / 另存 PDF 用表格"):
@@ -219,8 +230,11 @@ body {{ font-family: -apple-system, "Segoe UI", "PingFang TC", "Microsoft JhengH
             mime="text/html",
             key=f"download_print_{ticker}",
         )
-        st.caption("下方是預覽：")
-        st.markdown(f"<style>{_PRINT_TABLE_STYLE}</style>{table_html}", unsafe_allow_html=True)
+        st.caption("下方是預覽（欄位較多時可左右滑動）：")
+        st.markdown(
+            f'<style>{_PRINT_TABLE_STYLE}</style><div class="print-scroll" style="overflow-x:auto;">{table_html}</div>',
+            unsafe_allow_html=True,
+        )
 
 # --- Live price + per-ticker default computation ---
 # Fixed fallbacks if the live fetch fails (offline, API blocked/rate-limited,
@@ -568,11 +582,28 @@ def render_pricing_section(ticker):
         st.divider()
         st.subheader(f"📜 計算紀錄（{ticker}）")
         st.caption("本次連線期間有效，reload 頁面會清空")
+        # Streamlit's dataframe has its own column-hide menu, but that's a
+        # frontend-only toggle -- it doesn't tell this code anything, so the
+        # print/PDF export (a completely separate render) can't honor it.
+        # These checkboxes are a real, server-side choice instead: hiding a
+        # side here actually drops those columns before either table is
+        # built, so the interactive view and the export always agree, and a
+        # single-side trade (e.g. a Put-only entry) doesn't need 4 unused
+        # Call columns cluttering (or wrapping) either one.
+        cc, pc = st.columns(2)
+        show_call = cc.checkbox("顯示 Call 欄位", value=True, key=k("show_call_cols"))
+        show_put = pc.checkbox("顯示 Put 欄位", value=True, key=k("show_put_cols"))
+
         hist_df = pd.DataFrame(history).rename(columns={
             "S": "股價", "K": "履約價", "Discount": "折數", "r": "利率%", "IV": "IV%", "days": "天數",
             "Call": "Call 價", "Put": "Put 價", "CallΔ": "Call Δ", "PutΔ": "Put Δ",
             "Note": "備註", "Status": "標記",
         })
+        if not show_call:
+            hist_df = hist_df.drop(columns=["Call 價", "Call Δ"])
+        if not show_put:
+            hist_df = hist_df.drop(columns=["Put 價", "Put Δ"])
+
         # Row tinted by 標記 (status), Call/Put price columns keep their own
         # fixed red/green regardless -- see style_history_table's docstring.
         styled_hist = style_history_table(hist_df)
