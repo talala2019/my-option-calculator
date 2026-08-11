@@ -145,7 +145,7 @@ HISTORY_STATUS_OPTIONS = ["一般", "已成交", "收盤", "盤前", "盤中", "
 _STATUS_ROW_COLOR = {
     "已成交": "#bbdefb",  # light blue
     "盤前": "#fff9c4",    # light yellow
-    "估價": "#c8e6c9",    # light green
+    "估價": "#e1bee7",    # light purple (was light green -- clashed with the Put price column's green)
     # 一般 / 收盤 / 盤中: no color
 }
 
